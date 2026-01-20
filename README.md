@@ -1,8 +1,8 @@
-# 🤖 Sistema de Agentes Conversacionales - Mapfre Seguros
+# 🤖 Sistema de Agentes Conversacionales para Seguros
 
 <div align="center">
 
-![Sistema de Agentes Mapfre](https://img.shields.io/badge/Sistema-Agentes%20Conversacionales-blue?style=for-the-badge&logo=robot)
+![Sistema de Agentes Conversacionales](https://img.shields.io/badge/Sistema-Agentes%20Conversacionales-blue?style=for-the-badge&logo=robot)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=flat-square&logo=chainlink&logoColor=white)
@@ -71,7 +71,7 @@ Transforma la experiencia de seguros tradicional en una **conversación intelige
 👤 Cliente: "Sí, vamos"
 
 🤖 Sistema: "¡Perfecto! Aquí tienes el link de pago seguro:
-           🔗 https://pago.mapfre.com/contrato/ABC123
+           🔗 https://pago.seguros-ejemplo.com/contrato/ABC123
 
            Una vez completado, recibirás la póliza por email en 5 minutos."
 ```
@@ -493,8 +493,8 @@ Este script verifica:
 ### 🚀 Próximos Pasos Después de la Instalación
 
 1. **Probar los agentes**: Usa los endpoints para interactuar con cada agente
-2. **Configurar herramientas reales**: Conecta con APIs de Mapfre para datos reales
-3. **Personalizar prompts**: Ajusta las conversaciones según el estilo de Mapfre
+2. **Configurar herramientas reales**: Conecta con APIs de aseguradoras para datos reales
+3. **Personalizar prompts**: Ajusta las conversaciones según el estilo de la compañía
 4. **Configurar monitoring**: Agrega logs y métricas para producción
 
 ## 📡 Cómo usar el sistema
@@ -780,7 +780,7 @@ Importa esta colección para testing visual:
 ```json
 {
   "info": {
-    "name": "Sistema de Agentes Mapfre",
+    "name": "Sistema de Agentes Conversacionales",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -887,13 +887,13 @@ tfm-valley-mds10-muppy/
 ### 🔄 Próximos pasos prioritarios
 
 1. **Conectar herramientas reales**
-   - Integrar catálogo de productos Mapfre
+   - Integrar catálogo de productos de seguros
    - Sistema de cálculo de precios real
    - Conexión con pasarelas de pago (Stripe)
    - Base de datos para guardar leads
 
 2. **Refinar conversaciones**
-   - Ajustar prompts al estilo Mapfre
+   - Ajustar prompts al estilo de la compañía aseguradora
    - Agregar ejemplos específicos
    - Mejorar manejo de casos complejos
 
@@ -953,8 +953,8 @@ Cada agente se define con un archivo JSON:
 
 ## 📝 Notas Importantes
 
-- **Herramientas placeholder**: Las funciones en `insurance_tools.py` son ejemplos - necesitan conectarse a sistemas reales de Mapfre
-- **Prompts genéricos**: Están preparados para seguros pero pueden necesitar ajustes específicos de productos Mapfre
+- **Herramientas placeholder**: Las funciones en `insurance_tools.py` son ejemplos - necesitan conectarse a sistemas reales de aseguradoras
+- **Prompts genéricos**: Están preparados para seguros pero pueden necesitar ajustes específicos de productos de la aseguradora
 - **Base de datos**: Actualmente usa Redis para conversaciones, pero necesitarás Google Sheets para datos persistentes
 - **Memoria**: El sistema utiliza Redis para almacenar el historial de conversaciones y estados de sesión
 - **Seguridad**: Configura las variables de entorno correctamente antes de usar en producción
@@ -1337,7 +1337,7 @@ def check_agent_configs():
         return False
 
 def main():
-    print("🔍 Diagnóstico Completo del Sistema de Agentes Mapfre")
+    print("🔍 Diagnóstico Completo del Sistema de Agentes Conversacionales")
     print("=" * 60)
 
     checks = [
@@ -1458,17 +1458,17 @@ def calc_prem(v, a):  # Sin tipos, nombre poco descriptivo
 ### 🆘 Canales de Soporte
 
 #### 📧 Email
-- **Soporte Técnico**: soporte@mapfre.com
-- **Consultas Generales**: info@mapfre.com
+- **Soporte Técnico**: [GitHub Issues](https://github.com/ssillerom/tfm-valley-mds10-muppy/issues)
+- **Consultas Generales**: [GitHub Discussions](https://github.com/ssillerom/tfm-valley-mds10-muppy/discussions)
 
-#### 💬 Chat en Vivo (Próximamente)
-- Disponible en la web de Mapfre
-- Horario: L-V 9:00-18:00 CET
+#### 💬 Comunidad
+- [GitHub Discussions](https://github.com/ssillerom/tfm-valley-mds10-muppy/discussions) - Para preguntas y discusiones
+- [GitHub Issues](https://github.com/ssillerom/tfm-valley-mds10-muppy/issues) - Para reportar bugs
 
 #### 📖 Documentación
-- [Documentación Técnica](https://docs.mapfre.com/agentes)
-- [Guía de Usuario](https://docs.mapfre.com/usuario)
-- [API Reference](https://api.mapfre.com/docs)
+- **Documentación Técnica**: Este README.md
+- **Guía de Desarrollo**: Sección "Guía de Desarrollo" en este documento
+- **API Reference**: Sección "API Reference" en este documento
 
 ### 🌍 Comunidad
 
@@ -1516,11 +1516,11 @@ Este proyecto está bajo la Licencia MIT. Ver [LICENSE](LICENSE) para más detal
 
 <div align="center">
 
-**Desarrollado con ❤️ por el equipo de Mapfre**
+**Proyecto académico desarrollado con ❤️**
 
 ---
 
-[⬆️ Volver al Inicio](#-sistema-de-agentes-conversacionales---mapfre-seguros)
+[⬆️ Volver al Inicio](#-sistema-de-agentes-conversacionales-para-seguros)
 
 </div>
 
