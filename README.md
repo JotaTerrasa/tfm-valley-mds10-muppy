@@ -253,6 +253,7 @@ Cada agente se define con un archivo JSON:
 - **Herramientas placeholder**: Las funciones en `insurance_tools.py` son ejemplos - necesitan conectarse a sistemas reales de Mapfre
 - **Prompts genéricos**: Están preparados para seguros pero pueden necesitar ajustes específicos de productos Mapfre
 - **Base de datos**: Actualmente usa Redis para conversaciones, pero necesitarás BigQuery para datos persistentes
+- **Memoria**: El sistema utiliza Mem0 para gestionar el contexto de las conversaciones de manera inteligente
 - **Seguridad**: Configura las variables de entorno correctamente antes de usar en producción
 
 ## 🤝 Contribuir
@@ -261,6 +262,90 @@ Cada agente se define con un archivo JSON:
 2. Haz tus cambios y commits descriptivos
 3. Sube la rama: `git push origin feature/nueva-funcionalidad`
 4. Crea un Pull Request explicando los cambios
+
+## 📖 Glosario de Términos Técnicos
+
+### 🛠️ Desarrollo y Programación
+
+- **API REST**: Interfaz de programación que permite que diferentes sistemas se comuniquen entre sí a través de internet, usando operaciones como GET, POST, PUT, DELETE.
+
+- **JSON**: Formato de texto ligero para intercambiar datos. Es como un diccionario estructurado que tanto humanos como máquinas pueden entender fácilmente.
+
+- **FastAPI**: Framework moderno y rápido para crear APIs web en Python. Es como un constructor de carreteras que hace más fácil crear conexiones entre sistemas.
+
+- **Pydantic**: Biblioteca de Python que valida y convierte datos automáticamente. Asegura que la información que entra al sistema tenga el formato correcto.
+
+- **Uvicorn**: Servidor web ultrarrápido que ejecuta aplicaciones Python. Es el "motor" que hace funcionar nuestra API.
+
+- **ASGI**: Estándar técnico para servidores web asíncronos. Permite manejar múltiples conexiones simultáneamente sin bloquearse.
+
+- **Endpoint**: Una URL específica en nuestra API donde se puede enviar o recibir información (como `/invoke` o `/health`).
+
+### 🤖 Inteligencia Artificial y Agentes
+
+- **Agente Conversacional**: Un programa inteligente que puede mantener conversaciones naturales con humanos, entendiendo contexto y respondiendo de manera coherente.
+
+- **LangGraph**: Framework especializado para construir agentes conversacionales complejos. Es como un mapa que guía cómo fluyen las conversaciones.
+
+- **LLM (Large Language Model)**: Modelo de inteligencia artificial grande entrenado en enormes cantidades de texto, capaz de generar respuestas naturales (como GPT).
+
+- **Prompt**: Las instrucciones específicas que le damos al modelo de IA para que sepa cómo comportarse en una conversación.
+
+- **Mem0**: Sistema avanzado de memoria para agentes de IA que permite recordar conversaciones pasadas y mantener contexto a largo plazo.
+
+- **Buffer Window**: Técnica de memoria que mantiene solo las últimas N interacciones de una conversación para no sobrecargar el sistema.
+
+### 💾 Almacenamiento y Datos
+
+- **Redis**: Base de datos súper rápida especializada en almacenar datos temporales y cache. Perfecta para conversaciones en tiempo real.
+
+- **BigQuery**: Servicio de Google Cloud para analizar grandes cantidades de datos. Es como una base de datos gigante optimizada para consultas complejas.
+
+- **Session ID**: Identificador único para cada conversación. Es como el número de ticket que te dan en una tienda para recordar tu turno.
+
+- **Metadata**: Información adicional que acompaña a los mensajes principales, como timestamps, configuración del usuario, etc.
+
+### 🔧 Herramientas de Desarrollo
+
+- **Virtual Environment (venv)**: Entorno aislado de Python donde instalas las librerías del proyecto sin afectar otras aplicaciones.
+
+- **Pip**: Gestor de paquetes de Python. Es como un "instalador de apps" para librerías y herramientas de Python.
+
+- **Requirements.txt**: Archivo que lista todas las librerías necesarias para el proyecto con sus versiones específicas.
+
+- **.env**: Archivo de configuración que contiene variables secretas (como contraseñas de APIs) sin subirlas al código público.
+
+- **Curl**: Herramienta de línea de comandos para hacer peticiones HTTP. Es como un navegador de texto para probar APIs.
+
+- **HTTP Headers**: Información adicional que se envía con cada petición web, como el tipo de contenido o autenticación.
+
+- **Content-Type**: Cabecera HTTP que indica qué tipo de datos se están enviando (como "application/json" para datos JSON).
+
+### 🏗️ Arquitectura y Diseño
+
+- **State Machine**: Máquina de estados que define cómo fluye una conversación paso a paso, como un diagrama de flujo automatizado.
+
+- **Strategy Pattern**: Patrón de diseño que permite cambiar el comportamiento de un sistema sin modificar su código principal.
+
+- **Placeholder**: Código temporal que representa una funcionalidad que se implementará más tarde. Es como un "por hacer" en el código.
+
+- **Webhook**: Mecanismo que permite que un sistema notifique automáticamente a otro cuando ocurre un evento (como cuando se completa un pago).
+
+- **Pull Request**: Propuesta de cambios en el código que otros desarrolladores pueden revisar y aprobar antes de integrar al proyecto principal.
+
+### 💰 Pagos y Negocio
+
+- **Stripe**: Plataforma de pagos en línea que permite procesar transacciones de manera segura y sencilla.
+
+- **Lead**: Potencial cliente que ha mostrado interés en un producto o servicio.
+
+### 📊 Estados y Ciclo de Desarrollo
+
+- **Branch**: Rama en Git que permite desarrollar features de manera aislada sin afectar el código principal.
+
+- **Commit**: Guardado de cambios en el repositorio con un mensaje descriptivo de qué se modificó.
+
+- **Repository/Repo**: Almacén digital donde se guarda todo el código y su historial de cambios.
 
 ## 📄 Licencia
 
