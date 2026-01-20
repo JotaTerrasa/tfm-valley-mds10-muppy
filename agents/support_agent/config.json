@@ -1,0 +1,21 @@
+{
+  "agent_role": "agente_de_soporte_seguros",
+  "strategy": "generative",
+  "memory": {
+    "type": "buffer"
+  },
+  "llm_configurations": {
+    "default_model": "gemini-2.5-flash",
+    "models": {
+      "gemini-2.5-flash": {
+        "provider": "google",
+        "model": "gemini-2.5-flash",
+        "pricing": {
+          "input_per_million": 0.3,
+          "output_per_million": 2.5
+        }
+      }
+    }
+  },
+  "prompt_path": "support_agent.prompt"
+}

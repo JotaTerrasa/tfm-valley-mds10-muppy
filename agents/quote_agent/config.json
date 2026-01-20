@@ -1,0 +1,53 @@
+{
+  "agent_role": "agente_de_cotizacion_seguros",
+  "strategy": "state_machine",
+  "memory": {
+    "type": "buffer"
+  },
+  "llm_configurations": {
+    "default_model": "gemini-2.5-flash",
+    "models": {
+      "gemini-2.5-flash": {
+        "provider": "google",
+        "model": "gemini-2.5-flash",
+        "pricing": {
+          "input_per_million": 0.3,
+          "output_per_million": 2.5
+        }
+      }
+    }
+  },
+  "state_machine": {
+    "initial_state": {
+      "route": "cotizar",
+      "status": "incomplete",
+      "intent": "cotizar",
+      "insurance_type": null,
+      "collected_data": {},
+      "ready_for_commit": false
+    },
+    "router": {
+      "field": "route",
+      "default_node": "quote_node",
+      "map": {
+        "cotizar": "quote_node",
+        "product_selection": "product_selection_node",
+        "quote_result": "quote_result_node"
+      }
+    },
+    "nodes": {
+      "quote_node": {
+        "prompt_path": "prompts/quote_agent.prompt",
+        "available_tools": ["get_insurance_products", "calculate_quote"]
+      },
+      "product_selection_node": {
+        "prompt_path": "prompts/product_selection_agent.prompt",
+        "available_tools": ["get_insurance_products"]
+      },
+      "quote_result_node": {
+        "prompt_path": "prompts/quote_result_agent.prompt",
+        "available_tools": []
+      }
+    }
+  }
+}

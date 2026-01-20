@@ -1,0 +1,41 @@
+{
+  "agent_role": "agente_de_triaje_seguros",
+  "strategy": "state_machine",
+  "memory": {
+    "type": "buffer"
+  },
+  "llm_configurations": {
+    "default_model": "gemini-2.5-flash",
+    "models": {
+      "gemini-2.5-flash": {
+        "provider": "google",
+        "model": "gemini-2.5-flash",
+        "pricing": {
+          "input_per_million": 0.3,
+          "output_per_million": 2.5
+        }
+      }
+    }
+  },
+  "state_machine": {
+    "initial_state": {
+      "route": "triage"
+    },
+    "router": {
+      "field": "route",
+      "default_node": "triage_node",
+      "map": {
+        "triage": "triage_node",
+        "cotizar": "quote_agent",
+        "contratar": "contract_agent",
+        "soporte": "support_agent"
+      }
+    },
+    "nodes": {
+      "triage_node": {
+        "prompt_path": "triage_agent.prompt",
+        "available_tools": []
+      }
+    }
+  }
+}

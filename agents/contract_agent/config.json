@@ -1,0 +1,80 @@
+{
+  "agent_role": "agente_de_contratacion_seguros",
+  "strategy": "state_machine",
+  "memory": {
+    "type": "buffer"
+  },
+  "llm_configurations": {
+    "default_model": "gemini-2.5-flash",
+    "models": {
+      "gemini-2.5-flash": {
+        "provider": "google",
+        "model": "gemini-2.5-flash",
+        "pricing": {
+          "input_per_million": 0.3,
+          "output_per_million": 2.5
+        }
+      }
+    }
+  },
+  "state_machine": {
+    "initial_state": {
+      "route": "data_capture",
+      "status": "incomplete",
+      "intent": "contratar",
+      "collected_data": {},
+      "ready_for_commit": false,
+      "missing_fields": []
+    },
+    "router": {
+      "field": "route",
+      "default_node": "data_capture_node",
+      "map": {
+        "data_capture": "data_capture_node",
+        "verification": "verification_node",
+        "payment": "payment_node",
+        "final_summary": "final_summary_node"
+      }
+    },
+    "nodes": {
+      "data_capture_node": {
+        "prompt_path": "prompts/data_capture_agent.prompt",
+        "available_tools": []
+      },
+      "verification_node": {
+        "prompt_path": "prompts/verification_agent.prompt",
+        "available_tools": ["save_insurance_lead"]
+      },
+      "payment_node": {
+        "prompt_path": "prompts/payment_agent.prompt",
+        "available_tools": ["create_payment_link"]
+      },
+      "final_summary_node": {
+        "prompt_path": "prompts/final_summary_agent.prompt",
+        "available_tools": []
+      }
+    }
+  },
+  "persistence": {
+    "provider": "bigquery",
+    "trigger": {
+      "field": "status",
+      "on_completion": "new",
+      "on_abandoned": "incomplete_abandoned"
+    },
+    "data_mapping": [
+      { "target": "session_id", "source": "metadata.session_id" },
+      { "target": "status", "source": "status" },
+      { "target": "insurance_type", "source": "insurance_type" },
+      { "target": "first_name", "source": "collected_data.first_name" },
+      { "target": "last_name", "source": "collected_data.last_name" },
+      { "target": "email", "source": "collected_data.email" },
+      { "target": "phone_number", "source": "collected_data.phone_number" }
+    ],
+    "config": {
+      "project_id": "mapfre-insurance",
+      "dataset_id": "raw",
+      "table_id": "insurance_leads"
+    }
+  }
+}
