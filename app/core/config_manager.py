@@ -59,33 +59,3 @@ def get_agent_config(config_key: str) -> Dict:
     return AGENT_CONFIGS.get(config_key)
 
 
-def get_voice_config() -> dict:
-    """
-    Devuelve la configuración necesaria para llamadas de voz vía WhatsApp y ElevenLabs.
-    """
-    config = {
-        "WHATSAPP_API_URL": "https://graph.facebook.com/v23.0",
-        "PHONE_NUMBER_ID": os.getenv("PHONE_NUMBER_ID"),
-        "WHATSAPP_ACCESS_TOKEN": os.getenv("WHATSAPP_ACCESS_TOKEN"),
-        "WHATSAPP_APP_SECRET": os.getenv("WHATSAPP_APP_SECRET"),
-        "WHATSAPP_VERIFY_TOKEN": os.getenv("WHATSAPP_VERIFY_TOKEN"),
-        "ELEVEN_API_KEY": os.getenv("ELEVEN_API_KEY"),
-        "AGENT_ID": os.getenv("AGENT_ID"),
-        "REDIS_URL": os.getenv("REDIS_URL")
-    }
-
-    required_keys = [
-        "PHONE_NUMBER_ID",
-        "WHATSAPP_VERIFY_TOKEN",
-        "WHATSAPP_ACCESS_TOKEN",
-        "ELEVEN_API_KEY",
-        "AGENT_ID",
-        "REDIS_URL"
-    ]
-
-    missing_keys = [key for key in required_keys if not config.get(key)]
-    if missing_keys:
-        raise ValueError(
-            f"Faltan variables de entorno críticas para las llamadas de voz: {', '.join(missing_keys)}")
-
-    return config

@@ -78,9 +78,9 @@
 │  │                                  ▼  ▼                                             │  │
 │  │                        SISTEMAS EXTERNOS                                         │  │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐  │  │
-│  │  │   Stripe    │ │  BigQuery   │ │   Redis     │ │  ElevenLabs │ │   WhatsApp │  │  │
-│  │  │  Payments   │ │  Data Lake  │ │   Cache     │ │   TTS       │ │   API      │  │  │
-│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │  │
+│  │  │   Stripe    │ │  BigQuery   │ │   Redis     │ │   WhatsApp │  │  │
+│  │  │  Payments   │ │  Data Lake  │ │   Cache     │ │   API      │  │  │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │  │
 │  │                                                                                   │  │
 │  └───────────────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                         │
@@ -160,7 +160,6 @@ Query → Understand Issue → Provide Solution / Escalate
 ✅ **Escalabilidad**: Cache de LLM y orquestadores
 ✅ **Extensibilidad**: Nuevos agentes = nuevos JSON
 ✅ **Resiliencia**: Fallbacks y validación de respuestas
-✅ **Observabilidad**: Preparado para telemetría
 ✅ **Multi-tenancy**: Múltiples agentes especializados
 
 ## Diferencias con el Sistema Original

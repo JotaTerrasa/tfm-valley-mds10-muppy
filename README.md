@@ -168,13 +168,6 @@ WHATSAPP_APP_SECRET=tu_app_secret_whatsapp
 WHATSAPP_VERIFY_TOKEN=tu_verify_token_whatsapp
 
 # ======================================
-# VOZ Y AUDIO (OPCIONAL)
-# ======================================
-
-# Para funcionalidades de voz con ElevenLabs
-ELEVEN_API_KEY=tu_api_key_de_elevenlabs
-
-# ======================================
 # GOOGLE CLOUD (OPCIONAL)
 # ======================================
 
@@ -186,9 +179,6 @@ GOOGLE_APPLICATION_CREDENTIALS=ruta/a/tu/service_account.json
 # ======================================
 # OTROS SERVICIOS (OPCIONAL)
 # ======================================
-
-# ID del agente para telemetría/logs
-AGENT_ID=mapfre_agent_dev
 ```
 
 #### Paso 5: Configurar Google Cloud (opcional pero recomendado)
