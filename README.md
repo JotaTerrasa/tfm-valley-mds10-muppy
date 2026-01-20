@@ -463,7 +463,7 @@ Cada agente se define con un archivo JSON:
 - **Herramientas placeholder**: Las funciones en `insurance_tools.py` son ejemplos - necesitan conectarse a sistemas reales de Mapfre
 - **Prompts genéricos**: Están preparados para seguros pero pueden necesitar ajustes específicos de productos Mapfre
 - **Base de datos**: Actualmente usa Redis para conversaciones, pero necesitarás Google Sheets para datos persistentes
-- **Memoria**: El sistema utiliza Mem0 para gestionar el contexto de las conversaciones de manera inteligente
+- **Memoria**: El sistema utiliza Redis para almacenar el historial de conversaciones y estados de sesión
 - **Seguridad**: Configura las variables de entorno correctamente antes de usar en producción
 
 ## 🤝 Contribuir
@@ -501,7 +501,6 @@ Cada agente se define con un archivo JSON:
 
 - **Prompt**: Las instrucciones específicas que le damos al modelo de IA para que sepa cómo comportarse en una conversación.
 
-- **Mem0**: Sistema avanzado de memoria para agentes de IA que permite recordar conversaciones pasadas y mantener contexto a largo plazo.
 
 - **Buffer Window**: Técnica de memoria que mantiene solo las últimas N interacciones de una conversación para no sobrecargar el sistema.
 
