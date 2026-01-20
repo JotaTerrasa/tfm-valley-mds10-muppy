@@ -58,40 +58,255 @@ Usuario → API REST → Agentes Especializados → Respuesta
 
 ## 🚀 Instalación y Configuración
 
-### Paso 1: Preparar el entorno
+### 📋 Requisitos Previos
+
+Antes de comenzar, asegúrate de tener instalado:
+
+- **Python 3.8+**: Descárgalo de [python.org](https://python.org)
+- **Git**: Para clonar el repositorio
+- **Redis**: Base de datos para cache y sesiones
+- **Cuenta de Google Cloud**: Para BigQuery (opcional para desarrollo local)
+
+#### Instalación de Redis
+
+**Windows:**
+```bash
+# Usando Chocolatey (recomendado)
+choco install redis-64
+
+# O descarga desde: https://redis.io/download
+```
+
+**Linux/Ubuntu:**
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl start redis-server
+```
+
+**macOS:**
+```bash
+# Usando Homebrew
+brew install redis
+brew services start redis
+```
+
+**Verificar que Redis funciona:**
+```bash
+redis-cli ping
+# Debería responder: PONG
+```
+
+### 🔧 Instalación Paso a Paso
+
+#### Paso 1: Clonar el repositorio
 
 ```bash
-# Crear un entorno virtual (recomendado)
-python -m venv venv
-venv\Scripts\activate  # En Windows
-# source venv/bin/activate  # En Linux/Mac
+# Clonar el proyecto
+git clone https://github.com/ssillerom/tfm-valley-mds10-muppy.git
+cd tfm-valley-mds10-muppy
 
-# Instalar dependencias
+# Cambiar a la rama Dev
+git checkout Dev
+```
+
+#### Paso 2: Configurar entorno virtual
+
+```bash
+# Crear entorno virtual
+python -m venv venv
+
+# Activar entorno virtual
+# En Windows:
+venv\Scripts\activate
+# En Linux/Mac:
+# source venv/bin/activate
+
+# Verificar que estamos en el entorno virtual
+# Deberías ver (venv) al inicio de la línea de comandos
+```
+
+#### Paso 3: Instalar dependencias
+
+```bash
+# Actualizar pip
+pip install --upgrade pip
+
+# Instalar todas las dependencias
+pip install -r requirements.txt
+
+# Verificar instalación
+pip list | grep fastapi
+# Deberías ver: fastapi, uvicorn, etc.
+```
+
+### ⚙️ Configuración del Entorno
+
+#### Paso 4: Crear archivo .env
+
+Crea un archivo llamado `.env` en la raíz del proyecto con esta configuración:
+
+```env
+# ======================================
+# CONFIGURACIÓN BÁSICA
+# ======================================
+
+# Clave secreta para la API (genera una segura para producción)
+API_KEY_SECRET=mi_clave_super_secreta_para_desarrollo_12345
+
+# URL de Redis (ajusta según tu instalación)
+REDIS_URL=redis://localhost:6379
+
+# ======================================
+# WHATSAPP BUSINESS API (OPCIONAL)
+# ======================================
+
+# Solo si vas a usar WhatsApp
+PHONE_NUMBER_ID=tu_numero_de_telefono_id
+WHATSAPP_ACCESS_TOKEN=tu_token_de_acceso_whatsapp
+WHATSAPP_APP_SECRET=tu_app_secret_whatsapp
+WHATSAPP_VERIFY_TOKEN=tu_verify_token_whatsapp
+
+# ======================================
+# VOZ Y AUDIO (OPCIONAL)
+# ======================================
+
+# Para funcionalidades de voz con ElevenLabs
+ELEVEN_API_KEY=tu_api_key_de_elevenlabs
+
+# ======================================
+# GOOGLE CLOUD (OPCIONAL)
+# ======================================
+
+# Para BigQuery y otros servicios de Google
+# Configura con tu proyecto de Google Cloud
+GOOGLE_CLOUD_PROJECT=tu_proyecto_gcp
+GOOGLE_APPLICATION_CREDENTIALS=ruta/a/tu/service_account.json
+
+# ======================================
+# OTROS SERVICIOS (OPCIONAL)
+# ======================================
+
+# ID del agente para telemetría/logs
+AGENT_ID=mapfre_agent_dev
+```
+
+#### Paso 5: Configurar Google Cloud (opcional pero recomendado)
+
+Si quieres usar BigQuery para persistir datos:
+
+```bash
+# Instalar Google Cloud SDK
+# Descarga desde: https://cloud.google.com/sdk/docs/install
+
+# Autenticar
+gcloud auth application-default login
+
+# Crear un archivo de credenciales
+# Ve a Google Cloud Console > IAM > Service Accounts
+# Crea una service account con permisos de BigQuery
+# Descarga el JSON y colócalo en el proyecto
+```
+
+### ▶️ Ejecutar el Sistema
+
+#### Paso 6: Iniciar el servidor
+
+```bash
+# Asegúrate de que el entorno virtual esté activado
+# Deberías ver (venv) al inicio de la línea
+
+# Ejecutar con recarga automática (desarrollo)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# O para producción:
+# uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+#### Paso 7: Verificar que funciona
+
+Abre otra terminal y prueba:
+
+```bash
+# Verificar estado del servicio
+curl http://localhost:8000/health
+
+# Deberías obtener:
+# {"status": "healthy"}
+
+# Probar el endpoint principal
+curl -X POST "http://localhost:8000/invoke" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "Hola, quiero información sobre seguros",
+    "session_id": "test123"
+  }'
+
+# Deberías obtener una respuesta del agente
+```
+
+### 🔍 Solución de Problemas
+
+#### Error: "ModuleNotFoundError"
+```bash
+# Asegúrate de tener el entorno virtual activado
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+
+# Reinstala dependencias
 pip install -r requirements.txt
 ```
 
-### Paso 2: Configurar credenciales
+#### Error: "Redis connection refused"
+```bash
+# Verificar que Redis esté ejecutándose
+redis-cli ping
 
-Crea un archivo `.env` con tus configuraciones:
-
-```env
-# Base de datos y cache
-REDIS_URL=redis://localhost:6379
-
-# API Keys (si usas WhatsApp, pagos, etc.)
-API_KEY_SECRET=tu_clave_secreta
-PHONE_NUMBER_ID=tu_numero_whatsapp
-WHATSAPP_ACCESS_TOKEN=tu_token_whatsapp
+# Si no responde, iniciar Redis:
+# Windows: redis-server
+# Linux: sudo systemctl start redis-server
+# macOS: brew services start redis
 ```
 
-### Paso 3: Ejecutar el sistema
+#### Error: "Port 8000 already in use"
+```bash
+# Cambiar el puerto
+uvicorn app.main:app --reload --port 8001
+
+# O matar el proceso que usa el puerto
+# Linux/Mac: lsof -ti:8000 | xargs kill -9
+# Windows: En PowerShell como admin: Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess | Stop-Process
+```
+
+#### Error: "Google Cloud credentials not found"
+```bash
+# Si no vas a usar BigQuery, comenta esas líneas en .env
+# O configura las credenciales correctamente
+export GOOGLE_APPLICATION_CREDENTIALS=/ruta/a/tu/service_account.json
+```
+
+### 📊 Verificar Instalación Completa
+
+Ejecuta el script de verificación incluido:
 
 ```bash
-# Iniciar el servidor
-uvicorn app.main:app --reload
+# Ejecutar verificación automática
+python verify_installation.py
 ```
 
-El sistema estará disponible en `http://localhost:8000`
+Este script verifica:
+- ✅ Versión de Python (3.8+)
+- ✅ Todas las dependencias instaladas
+- ✅ Archivo .env configurado
+- ✅ Conexión con Redis
+- ✅ Aplicación importable
+
+### 🚀 Próximos Pasos Después de la Instalación
+
+1. **Probar los agentes**: Usa los endpoints para interactuar con cada agente
+2. **Configurar herramientas reales**: Conecta con APIs de Mapfre para datos reales
+3. **Personalizar prompts**: Ajusta las conversaciones según el estilo de Mapfre
+4. **Configurar monitoring**: Agrega logs y métricas para producción
 
 ## 📡 Cómo usar el sistema
 
