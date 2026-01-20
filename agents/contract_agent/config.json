@@ -56,7 +56,7 @@
     }
   },
   "persistence": {
-    "provider": "bigquery",
+    "provider": "gsheets",
     "trigger": {
       "field": "status",
       "on_completion": "new",

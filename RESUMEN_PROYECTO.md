@@ -77,7 +77,7 @@ He creado una estructura completa del proyecto adaptada del sistema de ventas de
 - [ ] Conectar `get_insurance_products` con catálogo real de Mapfre
 - [ ] Implementar lógica real de cálculo de cotizaciones
 - [ ] Integrar con sistema de pagos (Stripe u otro)
-- [ ] Conectar `save_insurance_lead` con BigQuery o base de datos
+- [ ] Conectar `save_insurance_lead` con Google Sheets
 
 ### 2. Completar Prompts
 - [ ] Ajustar prompts según tono y estilo de Mapfre
@@ -108,9 +108,11 @@ API_KEY_SECRET=tu_secret
 # Agregar más según necesidades
 ```
 
-### BigQuery (si se usa)
-- Configurar proyecto, dataset y tabla
-- Actualizar `persistence.config` en `contract_agent/config.json`
+### Google Sheets (recomendado)
+- Crear un Google Sheet para almacenar leads
+- Configurar credenciales de Google Sheets API
+- Compartir el sheet con el service account
+- Actualizar configuración en `contract_agent/config.json`
 
 ## 📝 Notas Importantes
 

@@ -65,7 +65,7 @@ Antes de comenzar, asegúrate de tener instalado:
 - **Python 3.8+**: Descárgalo de [python.org](https://python.org)
 - **Git**: Para clonar el repositorio
 - **Redis**: Base de datos para cache y sesiones
-- **Cuenta de Google Cloud**: Para BigQuery (opcional para desarrollo local)
+- **Cuenta de Google**: Para Google Sheets (opcional para desarrollo local)
 
 #### Instalación de Redis
 
@@ -171,31 +171,36 @@ WHATSAPP_VERIFY_TOKEN=tu_verify_token_whatsapp
 # GOOGLE CLOUD (OPCIONAL)
 # ======================================
 
-# Para BigQuery y otros servicios de Google
-# Configura con tu proyecto de Google Cloud
-GOOGLE_CLOUD_PROJECT=tu_proyecto_gcp
-GOOGLE_APPLICATION_CREDENTIALS=ruta/a/tu/service_account.json
+# Para Google Sheets
+# Credenciales de Google Sheets API
+GOOGLE_SHEETS_CREDENTIALS=ruta/a/tu/credentials.json
+GOOGLE_SHEETS_SPREADSHEET_ID=tu_spreadsheet_id
 
 # ======================================
 # OTROS SERVICIOS (OPCIONAL)
 # ======================================
 ```
 
-#### Paso 5: Configurar Google Cloud (opcional pero recomendado)
+#### Paso 5: Configurar Google Sheets (opcional pero recomendado)
 
-Si quieres usar BigQuery para persistir datos:
+Si quieres usar Google Sheets para persistir datos:
 
 ```bash
-# Instalar Google Cloud SDK
-# Descarga desde: https://cloud.google.com/sdk/docs/install
+# 1. Ve a Google Cloud Console: https://console.cloud.google.com/
+# 2. Crea un nuevo proyecto o selecciona uno existente
+# 3. Habilita la Google Sheets API:
+#    - Ve a "APIs & Services" > "Library"
+#    - Busca "Google Sheets API" y habilítala
 
-# Autenticar
-gcloud auth application-default login
+# 4. Crea credenciales:
+#    - Ve a "APIs & Services" > "Credentials"
+#    - Crea "OAuth 2.0 Client IDs"
+#    - Descarga el archivo JSON y colócalo en el proyecto
 
-# Crear un archivo de credenciales
-# Ve a Google Cloud Console > IAM > Service Accounts
-# Crea una service account con permisos de BigQuery
-# Descarga el JSON y colócalo en el proyecto
+# 5. Comparte tu Google Sheet:
+#    - Crea un nuevo Google Sheet
+#    - Copia el ID del URL (entre /d/ y /edit)
+#    - Comparte el sheet con el email del service account
 ```
 
 ### ▶️ Ejecutar el Sistema
@@ -270,7 +275,7 @@ uvicorn app.main:app --reload --port 8001
 
 #### Error: "Google Cloud credentials not found"
 ```bash
-# Si no vas a usar BigQuery, comenta esas líneas en .env
+# Si no vas a usar Google Sheets, comenta esas líneas en .env
 # O configura las credenciales correctamente
 export GOOGLE_APPLICATION_CREDENTIALS=/ruta/a/tu/service_account.json
 ```
@@ -457,7 +462,7 @@ Cada agente se define con un archivo JSON:
 
 - **Herramientas placeholder**: Las funciones en `insurance_tools.py` son ejemplos - necesitan conectarse a sistemas reales de Mapfre
 - **Prompts genéricos**: Están preparados para seguros pero pueden necesitar ajustes específicos de productos Mapfre
-- **Base de datos**: Actualmente usa Redis para conversaciones, pero necesitarás BigQuery para datos persistentes
+- **Base de datos**: Actualmente usa Redis para conversaciones, pero necesitarás Google Sheets para datos persistentes
 - **Memoria**: El sistema utiliza Mem0 para gestionar el contexto de las conversaciones de manera inteligente
 - **Seguridad**: Configura las variables de entorno correctamente antes de usar en producción
 
@@ -504,7 +509,7 @@ Cada agente se define con un archivo JSON:
 
 - **Redis**: Base de datos súper rápida especializada en almacenar datos temporales y cache. Perfecta para conversaciones en tiempo real.
 
-- **BigQuery**: Servicio de Google Cloud para analizar grandes cantidades de datos. Es como una base de datos gigante optimizada para consultas complejas.
+- **Google Sheets**: Hoja de cálculo de Google que usaremos como base de datos simple para almacenar leads y datos de seguros.
 
 - **Session ID**: Identificador único para cada conversación. Es como el número de ticket que te dan en una tienda para recordar tu turno.
 

@@ -1,5 +1,5 @@
 """
-Handler para persistencia de datos en BigQuery.
+Handler para persistencia de datos en Google Sheets.
 TODO: Implementar según necesidades específicas de Mapfre.
 """
 from typing import Dict, Any
@@ -14,7 +14,7 @@ async def handle_persistence(structured_data: Dict[str, Any], config: Dict[str, 
     """
     print(f"--- [Persistence Handler] Guardando datos para sesión: {structured_data.get('id')} ---")
     
-    # TODO: Implementar guardado real en BigQuery
+    # TODO: Implementar guardado real en Google Sheets
     persistence_config = config.get("persistence", {})
     
     if not persistence_config:

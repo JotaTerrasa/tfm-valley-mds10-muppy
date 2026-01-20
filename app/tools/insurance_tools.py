@@ -113,7 +113,7 @@ def save_insurance_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Confirmación del guardado
     """
-    # TODO: Implementar guardado real en BigQuery o base de datos
+    # TODO: Implementar guardado real en Google Sheets
     print(f"--- [Insurance Tools] Guardando lead: {lead_data.get('id', 'unknown')} ---")
     
     return {

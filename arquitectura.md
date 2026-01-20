@@ -78,8 +78,8 @@
 │  │                                  ▼  ▼                                             │  │
 │  │                        SISTEMAS EXTERNOS                                         │  │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐  │  │
-│  │  │   Stripe    │ │  BigQuery   │ │   Redis     │ │   WhatsApp │  │  │
-│  │  │  Payments   │ │  Data Lake  │ │   Cache     │ │   API      │  │  │
+│  │  │   Stripe    │ │  GSheets    │ │   Redis     │ │   WhatsApp │  │  │
+│  │  │  Payments   │ │  Storage    │ │   Cache     │ │   API      │  │  │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │  │
 │  │                                                                                   │  │
 │  └───────────────────────────────────────────────────────────────────────────────────┘  │
@@ -110,7 +110,7 @@ Config JSON → Memory Factory → Strategy Selection → LLM + Tools → Respon
 
 ### 3. **Persistencia y Estado**
 ```
-Response → Redis (Session State) → BigQuery (Leads) → Stripe (Payments)
+Response → Redis (Session State) → Google Sheets (Leads) → Stripe (Payments)
 ```
 
 ## Tipos de Agentes y Sus Flujos
@@ -152,7 +152,7 @@ Query → Understand Issue → Provide Solution / Escalate
 - **Insurance Products**: Consulta de productos de seguros disponibles
 - **Payment Tools**: Creación de links de pago
 - **Quote Calculation**: Cálculo de cotizaciones
-- **Persistence Tools**: Guardado de leads en BigQuery
+- **Persistence Tools**: Guardado de leads en Google Sheets
 
 ## Beneficios Arquitectónicos
 
