@@ -9,7 +9,13 @@ def get_tool_by_name(tool_name: str):
         get_insurance_products,
         calculate_quote,
         create_payment_link,
-        save_insurance_lead
+        save_insurance_lead,
+        get_policy_summary,
+        get_billing_details,
+        create_claim_ticket,
+        get_claim_status,
+        request_policy_change,
+        update_contact_details
     )
     
     TOOL_REGISTRY = {
@@ -17,6 +23,12 @@ def get_tool_by_name(tool_name: str):
         "calculate_quote": calculate_quote,
         "create_payment_link": create_payment_link,
         "save_insurance_lead": save_insurance_lead,
+        "get_policy_summary": get_policy_summary,
+        "get_billing_details": get_billing_details,
+        "create_claim_ticket": create_claim_ticket,
+        "get_claim_status": get_claim_status,
+        "request_policy_change": request_policy_change,
+        "update_contact_details": update_contact_details,
     }
     
     if tool_name not in TOOL_REGISTRY:

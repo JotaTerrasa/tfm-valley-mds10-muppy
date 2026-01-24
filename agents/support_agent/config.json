@@ -1,6 +1,6 @@
 {
   "agent_role": "agente_de_soporte_seguros",
-  "strategy": "generative",
+  "strategy": "state_machine",
   "memory": {
     "type": "buffer"
   },
@@ -17,5 +17,57 @@
       }
     }
   },
-  "prompt_path": "support_agent.prompt"
+  "state_machine": {
+    "initial_state": {
+      "route": "support",
+      "status": "incomplete",
+      "intent": "soporte",
+      "collected_data": {},
+      "ready_for_commit": false,
+      "missing_fields": []
+    },
+    "router": {
+      "field": "route",
+      "default_node": "support_triage_node",
+      "map": {
+        "support": "support_triage_node",
+        "policy_lookup": "policy_lookup_node",
+        "claims": "claims_node",
+        "billing": "billing_node",
+        "policy_change": "policy_change_node",
+        "update_data": "update_data_node",
+        "human_handoff": "human_handoff_node"
+      }
+    },
+    "nodes": {
+      "support_triage_node": {
+        "prompt_path": "support_agent.prompt",
+        "available_tools": []
+      },
+      "policy_lookup_node": {
+        "prompt_path": "prompts/policy_lookup.prompt",
+        "available_tools": ["get_policy_summary"]
+      },
+      "claims_node": {
+        "prompt_path": "prompts/claims_support.prompt",
+        "available_tools": ["create_claim_ticket", "get_claim_status"]
+      },
+      "billing_node": {
+        "prompt_path": "prompts/billing_support.prompt",
+        "available_tools": ["get_billing_details"]
+      },
+      "policy_change_node": {
+        "prompt_path": "prompts/policy_change_support.prompt",
+        "available_tools": ["request_policy_change"]
+      },
+      "update_data_node": {
+        "prompt_path": "prompts/update_contact_support.prompt",
+        "available_tools": ["update_contact_details"]
+      },
+      "human_handoff_node": {
+        "prompt_path": "prompts/human_handoff.prompt",
+        "available_tools": []
+      }
+    }
+  }
 }
