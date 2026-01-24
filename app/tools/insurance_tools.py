@@ -121,3 +121,135 @@ def save_insurance_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
         "lead_id": lead_data.get("id"),
         "timestamp": "2025-01-20T00:00:00Z"
     }
+
+def get_policy_summary(policy_number: str, id_number: str = None) -> Dict[str, Any]:
+    """
+    Obtiene un resumen básico de una póliza existente.
+    
+    Args:
+        policy_number: Número de póliza
+        id_number: Documento de identidad opcional
+    
+    Returns:
+        Resumen de póliza con datos básicos y coberturas
+    """
+    print(f"--- [Insurance Tools] Consultando póliza: {policy_number} ---")
+    masked_id = (id_number[-4:] if id_number else "N/A")
+    return {
+        "policy_number": policy_number,
+        "policy_status": "active",
+        "insured_name": "Cliente Mapfre",
+        "id_last_digits": masked_id,
+        "coverage_summary": [
+            "Responsabilidad civil",
+            "Asistencia en carretera",
+            "Defensa jurídica"
+        ],
+        "renewal_date": "2025-12-01",
+        "payment_status": "al_corriente"
+    }
+
+def get_billing_details(policy_number: str) -> Dict[str, Any]:
+    """
+    Obtiene información de facturación de una póliza.
+    
+    Args:
+        policy_number: Número de póliza
+    
+    Returns:
+        Detalles de facturación y próximos pagos
+    """
+    print(f"--- [Insurance Tools] Consultando facturación de póliza: {policy_number} ---")
+    return {
+        "policy_number": policy_number,
+        "next_payment_date": "2025-11-15",
+        "amount_due": 45.90,
+        "currency": "EUR",
+        "payment_method": "domiciliación",
+        "outstanding_balance": 0.0
+    }
+
+def create_claim_ticket(policy_number: str, description: str, incident_date: str = None) -> Dict[str, Any]:
+    """
+    Registra un siniestro nuevo.
+    
+    Args:
+        policy_number: Número de póliza
+        description: Descripción del siniestro
+        incident_date: Fecha del incidente (opcional)
+    
+    Returns:
+        Confirmación con número de siniestro
+    """
+    print(f"--- [Insurance Tools] Creando siniestro para póliza: {policy_number} ---")
+    suffix = policy_number[-4:] if policy_number else "0000"
+    claim_id = f"CLM-{suffix}-001"
+    return {
+        "claim_id": claim_id,
+        "policy_number": policy_number,
+        "status": "opened",
+        "incident_date": incident_date or "2025-01-20",
+        "next_steps": "Un gestor revisará el caso en las próximas 24 horas."
+    }
+
+def get_claim_status(claim_id: str) -> Dict[str, Any]:
+    """
+    Consulta el estado de un siniestro existente.
+    
+    Args:
+        claim_id: Número de siniestro
+    
+    Returns:
+        Estado y última actualización
+    """
+    print(f"--- [Insurance Tools] Consultando estado de siniestro: {claim_id} ---")
+    return {
+        "claim_id": claim_id,
+        "status": "in_review",
+        "last_update": "2025-01-22",
+        "estimated_resolution": "2025-02-05"
+    }
+
+def request_policy_change(policy_number: str, change_type: str, details: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Registra una solicitud de cambio o cancelación de póliza.
+    
+    Args:
+        policy_number: Número de póliza
+        change_type: Tipo de cambio solicitado
+        details: Detalles adicionales del cambio
+    
+    Returns:
+        Confirmación de la solicitud
+    """
+    print(f"--- [Insurance Tools] Solicitud de cambio '{change_type}' para póliza: {policy_number} ---")
+    return {
+        "policy_number": policy_number,
+        "change_type": change_type,
+        "status": "received",
+        "request_id": f"REQ-{policy_number[-4:] if policy_number else '0000'}"
+    }
+
+def update_contact_details(policy_number: str, email: str = None, phone_number: str = None, address: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Actualiza datos de contacto de una póliza.
+    
+    Args:
+        policy_number: Número de póliza
+        email: Email actualizado
+        phone_number: Teléfono actualizado
+        address: Dirección actualizada
+    
+    Returns:
+        Confirmación de actualización
+    """
+    print(f"--- [Insurance Tools] Actualizando datos de contacto para póliza: {policy_number} ---")
+    return {
+        "policy_number": policy_number,
+        "status": "updated",
+        "updated_fields": {
+            "email": email,
+            "phone_number": phone_number,
+            "address": address
+        }
+    }
