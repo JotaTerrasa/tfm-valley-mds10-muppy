@@ -49,3 +49,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# RAG / Vector Database (generated)
+chroma_db/
