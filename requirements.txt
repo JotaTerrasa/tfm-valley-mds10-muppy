@@ -20,3 +20,8 @@ uvicorn[standard]
 langdetect
 dateparser
 pydantic
+pymupdf
+chromadb
+langchain-chroma
+langchain-ollama
+langchain-text-splitters
