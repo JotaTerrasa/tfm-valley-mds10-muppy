@@ -38,15 +38,15 @@
     "nodes": {
       "quote_node": {
         "prompt_path": "prompts/quote_agent.prompt",
-        "available_tools": ["get_insurance_products", "calculate_quote"]
+        "available_tools": ["get_insurance_products", "calculate_quote", "search_insurance_info"]
       },
       "product_selection_node": {
         "prompt_path": "prompts/product_selection_agent.prompt",
-        "available_tools": ["get_insurance_products"]
+        "available_tools": ["get_insurance_products", "search_insurance_info"]
       },
       "quote_result_node": {
         "prompt_path": "prompts/quote_result_agent.prompt",
-        "available_tools": []
+        "available_tools": ["search_insurance_info"]
       }
     }
   }

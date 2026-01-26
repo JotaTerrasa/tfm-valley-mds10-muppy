@@ -51,35 +51,387 @@ def get_insurance_products(insurance_type: str) -> List[Dict[str, Any]]:
 
 def calculate_quote(insurance_type: str, coverage_level: str, additional_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Calcula una cotización para un seguro.
+    Calcula una cotización para un seguro. Redirige a la función específica según el tipo.
     
     Args:
-        insurance_type: Tipo de seguro
+        insurance_type: Tipo de seguro ("auto", "hogar", "moto")
         coverage_level: Nivel de cobertura
         additional_data: Datos adicionales (edad, ubicación, etc.)
     
     Returns:
         Diccionario con la cotización calculada
     """
-    # TODO: Implementar lógica real de cálculo de cotización
     print(f"--- [Insurance Tools] Calculando cotización: {insurance_type}, {coverage_level} ---")
     
-    base_prices = {
-        "auto": {"básico": 300, "completo": 600},
-        "hogar": {"básico": 200, "completo": 400},
-        "vida": {"básico": 500, "completo": 1000},
-        "salud": {"básico": 400, "completo": 800}
+    if additional_data is None:
+        additional_data = {}
+    
+    # Redirigir a la función específica según el tipo de seguro
+    if insurance_type in ["auto", "coche"]:
+        return calculate_quote_auto(coverage_level, additional_data)
+    elif insurance_type == "hogar":
+        return calculate_quote_hogar(coverage_level, additional_data)
+    elif insurance_type == "moto":
+        return calculate_quote_moto(coverage_level, additional_data)
+    else:
+        return {
+            "error": f"Tipo de seguro '{insurance_type}' no soportado",
+            "tipos_disponibles": ["auto", "hogar", "moto"]
+        }
+
+
+def calculate_quote_hogar(coverage_level: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calcula cotización para seguro de HOGAR.
+    
+    Factores considerados:
+    - Tipo de vivienda (piso, casa, apartamento)
+    - Metros cuadrados
+    - Propietario vs alquiler
+    - Código postal (zona)
+    - Nivel de cobertura
+    
+    Args:
+        coverage_level: "basica" o "completa"
+        data: {
+            "tipo_vivienda": "piso" | "casa" | "apartamento",
+            "metros_cuadrados": int,
+            "es_propietario": bool,
+            "codigo_postal": str
+        }
+    """
+    # Precios base según tipo de vivienda (€/año)
+    precios_base = {
+        "piso": 150,
+        "casa": 220,
+        "chalet": 220,
+        "apartamento": 130
     }
     
-    base_price = base_prices.get(insurance_type, {}).get(coverage_level, 300)
+    tipo_vivienda = data.get("tipo_vivienda", "piso").lower()
+    metros = data.get("metros_cuadrados", 80)
+    es_propietario = data.get("es_propietario", True)
+    codigo_postal = data.get("codigo_postal", "00000")
+    
+    # 1. Precio base según tipo de vivienda
+    precio = precios_base.get(tipo_vivienda, 150)
+    
+    # 2. Ajuste por metros cuadrados (+5€ por cada 10m²)
+    precio += (metros // 10) * 5
+    
+    # 3. Ajuste por propiedad (alquiler = -20% porque no cubre continente)
+    if not es_propietario:
+        precio *= 0.80
+    
+    # 4. Ajuste por zona geográfica
+    zonas_premium = ["28", "08", "48", "41"]  # Madrid, Barcelona, Bilbao, Sevilla
+    if codigo_postal[:2] in zonas_premium:
+        precio *= 1.15
+    
+    # 5. Ajuste por nivel de cobertura
+    multiplicadores_cobertura = {
+        "basica": 1.0,
+        "básica": 1.0,
+        "completa": 1.8,
+        "todo_riesgo": 1.8
+    }
+    multiplicador = multiplicadores_cobertura.get(coverage_level.lower(), 1.0)
+    precio_final = round(precio * multiplicador, 2)
+    
+    # Calcular desglose
+    return {
+        "insurance_type": "hogar",
+        "coverage_level": coverage_level,
+        "annual_premium": precio_final,
+        "monthly_premium": round(precio_final / 12, 2),
+        "currency": "EUR",
+        "detalles": {
+            "tipo_vivienda": tipo_vivienda,
+            "metros_cuadrados": metros,
+            "es_propietario": es_propietario,
+            "codigo_postal": codigo_postal
+        },
+        "coberturas_incluidas": [
+            "Incendio y explosión",
+            "Daños por agua",
+            "Robo y hurto",
+            "Responsabilidad civil",
+            "Asistencia en el hogar 24h"
+        ] if coverage_level.lower() in ["completa", "todo_riesgo"] else [
+            "Incendio y explosión",
+            "Daños por agua",
+            "Responsabilidad civil básica"
+        ]
+    }
+
+
+def calculate_quote_auto(coverage_level: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calcula cotización para seguro de AUTO/COCHE.
+    
+    Factores considerados:
+    - Edad del conductor
+    - Antigüedad del vehículo
+    - Código postal
+    - Nivel de cobertura (terceros, terceros_ampliado, todo_riesgo)
+    
+    Args:
+        coverage_level: "terceros" | "terceros_ampliado" | "todo_riesgo"
+        data: {
+            "marca": str,
+            "modelo": str,
+            "año_vehiculo": int,
+            "fecha_nacimiento": str (YYYY-MM-DD),
+            "codigo_postal": str
+        }
+    """
+    from datetime import datetime
+    
+    # Precios base según cobertura (€/año)
+    precios_base = {
+        "terceros": 280,
+        "terceros_ampliado": 420,
+        "todo_riesgo": 650,
+        "basico": 280,
+        "básico": 280,
+        "completo": 650
+    }
+    
+    año_vehiculo = data.get("año_vehiculo", 2020)
+    fecha_nacimiento = data.get("fecha_nacimiento", "1990-01-01")
+    codigo_postal = data.get("codigo_postal", "00000")
+    marca = data.get("marca", "").lower()
+    
+    # Calcular edad del conductor
+    try:
+        año_nacimiento = int(fecha_nacimiento.split("-")[0])
+        edad_conductor = datetime.now().year - año_nacimiento
+    except:
+        edad_conductor = 35
+    
+    # 1. Precio base según cobertura
+    precio = precios_base.get(coverage_level.lower(), 400)
+    
+    # 2. Ajuste por edad del conductor
+    if edad_conductor < 25:
+        precio *= 1.50  # Jóvenes +50%
+    elif edad_conductor < 30:
+        precio *= 1.20  # +20%
+    elif edad_conductor > 65:
+        precio *= 1.15  # Mayores +15%
+    
+    # 3. Ajuste por antigüedad del vehículo
+    antiguedad = datetime.now().year - año_vehiculo
+    if antiguedad > 15:
+        precio *= 1.25  # Vehículos muy antiguos
+    elif antiguedad > 10:
+        precio *= 1.10
+    elif antiguedad < 2:
+        precio *= 1.05  # Vehículos nuevos (más valor)
+    
+    # 4. Ajuste por zona geográfica
+    zonas_premium = ["28", "08", "48", "41", "46"]  # Madrid, Barcelona, Bilbao, Sevilla, Valencia
+    if codigo_postal[:2] in zonas_premium:
+        precio *= 1.12
+    
+    # 5. Ajuste por marca (algunas marcas más caras de reparar)
+    marcas_premium = ["bmw", "mercedes", "audi", "porsche", "tesla"]
+    if marca in marcas_premium:
+        precio *= 1.20
+    
+    precio_final = round(precio, 2)
     
     return {
-        "insurance_type": insurance_type,
+        "insurance_type": "auto",
         "coverage_level": coverage_level,
-        "annual_premium": base_price,
-        "monthly_premium": round(base_price / 12, 2),
-        "currency": "EUR"
+        "annual_premium": precio_final,
+        "monthly_premium": round(precio_final / 12, 2),
+        "currency": "EUR",
+        "detalles": {
+            "marca": data.get("marca", ""),
+            "modelo": data.get("modelo", ""),
+            "año_vehiculo": año_vehiculo,
+            "edad_conductor": edad_conductor,
+            "codigo_postal": codigo_postal
+        },
+        "coberturas_incluidas": _get_coberturas_auto(coverage_level)
     }
+
+
+def _get_coberturas_auto(coverage_level: str) -> List[str]:
+    """Devuelve las coberturas incluidas según el nivel."""
+    coberturas = {
+        "terceros": [
+            "Responsabilidad civil obligatoria",
+            "Responsabilidad civil voluntaria (50M€)",
+            "Defensa jurídica",
+            "Asistencia en viaje"
+        ],
+        "terceros_ampliado": [
+            "Responsabilidad civil obligatoria",
+            "Responsabilidad civil voluntaria (50M€)",
+            "Defensa jurídica",
+            "Asistencia en viaje",
+            "Lunas",
+            "Robo",
+            "Incendio",
+            "Fenómenos atmosféricos"
+        ],
+        "todo_riesgo": [
+            "Responsabilidad civil obligatoria",
+            "Responsabilidad civil voluntaria (50M€)",
+            "Defensa jurídica",
+            "Asistencia en viaje",
+            "Lunas",
+            "Robo",
+            "Incendio",
+            "Fenómenos atmosféricos",
+            "Daños propios",
+            "Vehículo de sustitución"
+        ]
+    }
+    return coberturas.get(coverage_level.lower(), coberturas["terceros"])
+
+
+def calculate_quote_moto(coverage_level: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calcula cotización para seguro de MOTO.
+    
+    Factores considerados:
+    - Cilindrada
+    - Edad del conductor
+    - Antigüedad del vehículo
+    - Código postal
+    - Nivel de cobertura
+    
+    Args:
+        coverage_level: "terceros" | "terceros_ampliado" | "todo_riesgo" | "basica" | "lider"
+        data: {
+            "marca": str,
+            "modelo": str,
+            "cilindrada": int (cc),
+            "año_vehiculo": int,
+            "fecha_nacimiento": str (YYYY-MM-DD),
+            "codigo_postal": str
+        }
+    """
+    from datetime import datetime
+    
+    # Precios base según cobertura (€/año)
+    precios_base = {
+        "terceros": 180,
+        "basica": 180,
+        "básica": 180,
+        "terceros_ampliado": 280,
+        "todo_riesgo": 450,
+        "lider": 380,
+        "líder": 380,
+        "diez": 320,
+        "completo": 450
+    }
+    
+    cilindrada = data.get("cilindrada", 125)
+    año_vehiculo = data.get("año_vehiculo", 2020)
+    fecha_nacimiento = data.get("fecha_nacimiento", "1990-01-01")
+    codigo_postal = data.get("codigo_postal", "00000")
+    
+    # Calcular edad del conductor
+    try:
+        año_nacimiento = int(fecha_nacimiento.split("-")[0])
+        edad_conductor = datetime.now().year - año_nacimiento
+    except:
+        edad_conductor = 35
+    
+    # 1. Precio base según cobertura
+    precio = precios_base.get(coverage_level.lower(), 250)
+    
+    # 2. Ajuste por cilindrada
+    if cilindrada <= 125:
+        precio *= 0.70  # Motos pequeñas -30%
+    elif cilindrada <= 500:
+        precio *= 1.0   # Base
+    elif cilindrada <= 750:
+        precio *= 1.30  # +30%
+    else:
+        precio *= 1.60  # Motos grandes +60%
+    
+    # 3. Ajuste por edad del conductor (motos más restrictivo)
+    if edad_conductor < 25:
+        precio *= 1.70  # Jóvenes +70%
+    elif edad_conductor < 30:
+        precio *= 1.30  # +30%
+    elif edad_conductor > 60:
+        precio *= 1.20  # Mayores +20%
+    
+    # 4. Ajuste por antigüedad del vehículo
+    antiguedad = datetime.now().year - año_vehiculo
+    if antiguedad > 12:
+        precio *= 1.20
+    elif antiguedad > 8:
+        precio *= 1.10
+    
+    # 5. Ajuste por zona geográfica
+    zonas_premium = ["28", "08", "48", "41", "46"]
+    if codigo_postal[:2] in zonas_premium:
+        precio *= 1.10
+    
+    precio_final = round(precio, 2)
+    
+    return {
+        "insurance_type": "moto",
+        "coverage_level": coverage_level,
+        "annual_premium": precio_final,
+        "monthly_premium": round(precio_final / 12, 2),
+        "currency": "EUR",
+        "detalles": {
+            "marca": data.get("marca", ""),
+            "modelo": data.get("modelo", ""),
+            "cilindrada": cilindrada,
+            "año_vehiculo": año_vehiculo,
+            "edad_conductor": edad_conductor,
+            "codigo_postal": codigo_postal
+        },
+        "coberturas_incluidas": _get_coberturas_moto(coverage_level)
+    }
+
+
+def _get_coberturas_moto(coverage_level: str) -> List[str]:
+    """Devuelve las coberturas incluidas según el nivel para moto."""
+    coberturas = {
+        "terceros": [
+            "Responsabilidad civil obligatoria (70M€ personas, 15M€ bienes)",
+            "Defensa jurídica (600€)",
+            "Asistencia en viaje"
+        ],
+        "basica": [
+            "Responsabilidad civil obligatoria (70M€ personas, 15M€ bienes)",
+            "RC suplementaria (50M€)",
+            "Accidentes conductor (8.000€ fallecimiento)",
+            "Defensa jurídica (600€)",
+            "Asistencia en viaje"
+        ],
+        "terceros_ampliado": [
+            "Responsabilidad civil obligatoria",
+            "RC suplementaria (50M€)",
+            "Accidentes conductor",
+            "Defensa jurídica",
+            "Asistencia en viaje",
+            "Robo",
+            "Incendio"
+        ],
+        "todo_riesgo": [
+            "Responsabilidad civil obligatoria",
+            "RC suplementaria (50M€)",
+            "Accidentes conductor",
+            "Defensa jurídica",
+            "Asistencia en viaje",
+            "Robo",
+            "Incendio",
+            "Daños propios",
+            "Equipamiento"
+        ]
+    }
+    return coberturas.get(coverage_level.lower(), coberturas.get("basica", []))
 
 def create_payment_link(amount: float, session_id: str, description: str = "Pago de seguro") -> Dict[str, Any]:
     """
@@ -121,3 +473,28 @@ def save_insurance_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
         "lead_id": lead_data.get("id"),
         "timestamp": "2025-01-20T00:00:00Z"
     }
+
+
+def search_insurance_info(query: str, insurance_type: str = None) -> str:
+    """
+    Busca información sobre seguros en la base de conocimientos.
+    Usa esta herramienta cuando el cliente pregunte sobre:
+    - Coberturas específicas de un seguro
+    - Condiciones generales
+    - Exclusiones o limitaciones
+    - Documentación necesaria
+    - Precios orientativos o modalidades
+    
+    Args:
+        query: Pregunta o tema a buscar (ej: "coberturas todo riesgo coche")
+        insurance_type: Tipo de seguro para filtrar ("coche", "hogar", "moto"). Opcional.
+    
+    Returns:
+        Información relevante encontrada en los documentos de seguros.
+    """
+    from app.rag.vector_store import search_insurance_info as rag_search
+    
+    print(f"--- [Insurance Tools] Buscando info: '{query}' (tipo: {insurance_type}) ---")
+    
+    result = rag_search(query, insurance_type=insurance_type, k=3)
+    return result
