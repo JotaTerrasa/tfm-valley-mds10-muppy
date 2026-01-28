@@ -474,9 +474,18 @@ def save_insurance_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp": "2025-01-20T00:00:00Z"
     }
 
-def search_insurance_info(query: str, insurance_type: str = None) -> str:
+def search_insurance_info(
+    query: str, 
+    insurance_type: str = None,
+    product: str = None,
+    doc_type: str = None
+) -> str:
     """
-    Busca información sobre seguros en la base de conocimientos.
+    Busca información sobre seguros en la base de conocimientos con Metadata Filtering.
+    
+    IMPORTANTE: Esta herramienta usa filtros de metadatos para buscar SOLO en los 
+    documentos relevantes, mejorando significativamente la precisión de las respuestas.
+    
     Usa esta herramienta cuando el cliente pregunte sobre:
     - Coberturas específicas de un seguro
     - Condiciones generales
@@ -485,17 +494,62 @@ def search_insurance_info(query: str, insurance_type: str = None) -> str:
     - Precios orientativos o modalidades
     
     Args:
-        query: Pregunta o tema a buscar (ej: "coberturas todo riesgo coche")
-        insurance_type: Tipo de seguro para filtrar ("coche", "hogar", "moto"). Opcional.
+        query: Pregunta o tema a buscar (ej: "coberturas daños propios")
+        insurance_type: Filtro OBLIGATORIO por tipo de seguro:
+            - "coche": Seguros de automóvil
+            - "hogar": Seguros de vivienda
+            - "moto": Seguros de motocicleta
+        product: Filtro opcional por producto específico. Ejemplos:
+            - Coche: "terceros", "terceros_ampliados", "todo_riesgo", "general"
+            - Hogar: "familiar", "platino", "tu_eliges"
+            - Moto: "moto_terceros", "moto_todo_riesgo", "moto_basica", "moto_lider"
+        doc_type: Filtro opcional por tipo de documento:
+            - "condiciones_generales": Términos y condiciones completas
+            - "nota_informativa": Resumen informativo
+            - "documento_informacion": Información precontractual
+            - "general": Información general
     
     Returns:
-        Información relevante encontrada en los documentos de seguros.
+        Información relevante encontrada, con indicación de las fuentes consultadas.
+    
+    Ejemplos de uso:
+        # Cliente pregunta sobre moto a terceros
+        search_insurance_info("coberturas", insurance_type="moto", product="moto_terceros")
+        
+        # Cliente pregunta sobre exclusiones de hogar
+        search_insurance_info("exclusiones", insurance_type="hogar", doc_type="condiciones_generales")
     """
     from app.rag.vector_store import search_insurance_info as rag_search
     
-    print(f"--- [Insurance Tools] Buscando info: '{query}' (tipo: {insurance_type}) ---")
+    # Logging visible para debugging interno
+    print("\n" + "="*70)
+    print("📚 [RAG SEARCH] Consulta a la base de conocimientos")
+    print("="*70)
+    print(f"   Query: '{query}'")
+    print(f"   Filtros aplicados:")
+    print(f"      - insurance_type: {insurance_type or '(sin filtro - BUSCA EN TODO)'}")
+    print(f"      - product: {product or '(sin filtro)'}")
+    print(f"      - doc_type: {doc_type or '(sin filtro)'}")
+    print("-"*70)
     
-    result = rag_search(query, insurance_type=insurance_type, k=3)
+    result = rag_search(
+        query, 
+        insurance_type=insurance_type, 
+        product=product,
+        doc_type=doc_type,
+        k=3,
+        include_scores=True  # Siempre incluir scores para ver relevancia
+    )
+    
+    # Logging de resultados
+    if "No se encontró" in result:
+        print("   ⚠️  No se encontraron resultados con estos filtros")
+    else:
+        # Contar fuentes encontradas
+        num_sources = result.count("**Fuente")
+        print(f"   ✅ Encontradas {num_sources} fuentes relevantes")
+    print("="*70 + "\n")
+    
     return result
 
 def get_policy_summary(policy_number: str, id_number: str = None) -> Dict[str, Any]:
