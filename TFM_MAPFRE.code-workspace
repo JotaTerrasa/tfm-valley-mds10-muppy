@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "TFM_MAPFRE"
+		},
+		{
+			"path": "langchain"
+		},
+		{
+			"path": "venv"
+		},
+		{
+			"path": "__pycache__"
+		},
+		{
+			"path": "langgraph-dev"
+		}
+	]
+}

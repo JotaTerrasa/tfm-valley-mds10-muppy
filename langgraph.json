@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "mapfre_triage": "./main_triaje_mafre.py:app"
+  }
+}
