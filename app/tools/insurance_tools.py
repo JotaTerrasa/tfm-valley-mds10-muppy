@@ -49,14 +49,14 @@ def get_insurance_products(insurance_type: str) -> List[Dict[str, Any]]:
     
     return mock_products.get(insurance_type, [])
 
-def calculate_quote(insurance_type: str, coverage_level: str, additional_data: Dict[str, Any] = None) -> Dict[str, Any]:
+def calculate_quote(insurance_type: str, coverage_level: str, additional_data: Any = None) -> Dict[str, Any]:
     """
     Calcula una cotización para un seguro. Redirige a la función específica según el tipo.
     
     Args:
         insurance_type: Tipo de seguro ("auto", "hogar", "moto")
         coverage_level: Nivel de cobertura
-        additional_data: Datos adicionales (edad, ubicación, etc.)
+        additional_data: Datos adicionales (dict o string JSON con edad, ubicación, etc.)
     
     Returns:
         Diccionario con la cotización calculada
@@ -65,6 +65,36 @@ def calculate_quote(insurance_type: str, coverage_level: str, additional_data: D
     
     if additional_data is None:
         additional_data = {}
+    elif isinstance(additional_data, str):
+        try:
+            additional_data = json.loads(additional_data)
+        except (json.JSONDecodeError, TypeError) as e:
+            return {
+                "error": "El formato de los datos adicionales no es válido (se espera JSON).",
+                "detalle": str(e),
+                "status": "error"
+            }
+    if not isinstance(additional_data, dict):
+        return {
+            "error": "additional_data debe ser un diccionario o una cadena JSON.",
+            "status": "error"
+        }
+    
+    # Normalizar claves típicas del LLM a las esperadas por las funciones internas
+    if insurance_type in ["auto", "coche"]:
+        data_auto = dict(additional_data)
+        if "car_year" in data_auto and "año_vehiculo" not in data_auto:
+            data_auto["año_vehiculo"] = data_auto.pop("car_year", None)
+        if "birth_date" in data_auto and "fecha_nacimiento" not in data_auto:
+            data_auto["fecha_nacimiento"] = data_auto.pop("birth_date", None)
+        if "postal_code" in data_auto and "codigo_postal" not in data_auto:
+            data_auto["codigo_postal"] = data_auto.pop("postal_code", None)
+        if "car_make_model" in data_auto:
+            make_model = data_auto.pop("car_make_model", "") or ""
+            parts = str(make_model).strip().split(None, 1)
+            data_auto.setdefault("marca", parts[0] if parts else "")
+            data_auto.setdefault("modelo", parts[1] if len(parts) > 1 else "")
+        additional_data = data_auto
     
     # Redirigir a la función específica según el tipo de seguro
     if insurance_type in ["auto", "coche"]:
