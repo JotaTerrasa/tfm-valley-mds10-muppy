@@ -19,16 +19,29 @@ Frontend web para interactuar con el sistema multiagente **Muppy** (Mapfre Segur
 ## ✅ Requisitos
 
 - **Node.js** 18+ (recomendado) y **npm**
-- Backend de agentes ejecutándose en local (por defecto en `http://localhost:8000`)
+- Backend de agentes ejecutándose (por defecto en `http://localhost:8000`)
 
 ## 🚀 Arranque rápido (solo frontend)
 
 ```bash
+cp .env.example .env   # primera vez: crear .env desde plantilla
 npm install
 npm run dev
 ```
 
-Luego abre `http://localhost:5173`.
+Luego abre la URL que muestre Vite (p. ej. `http://localhost:5173`).
+
+### Variables de entorno (`frontend/.env`)
+
+| Variable | Descripción |
+|----------|-------------|
+| `VITE_API_URL` | URL del backend. En local suele ser `http://localhost:8000`. Si el backend corre en otro puerto (p. ej. 8001), pon aquí `http://localhost:8001`. |
+
+Ejemplo `frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:8000
+```
 
 ## 🔌 Conexión con el backend (Muppy Agents)
 
@@ -60,25 +73,18 @@ El frontend utiliza principalmente:
 
 ## ▶️ Ejecutar el backend (referencia)
 
-Repositorio backend: `tfm-valley-mds10-muppy` (ruta local en tu máquina).
-
-Pasos típicos:
+Desde la **raíz del proyecto** (no desde `frontend/`):
 
 ```bash
-# En la carpeta del backend
-.\venv\Scripts\activate
+source venv/bin/activate   # Linux/macOS. En Windows: venv\Scripts\activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-> Nota: el backend requiere **Redis** y la variable `REDIS_URL` configurada.
+El backend necesita en la raíz un `.env` con `GOOGLE_API_KEY` (API key de Google AI Studio). No usa Redis. Opcionalmente, para que los agentes consulten documentación de seguros (RAG), instala [Ollama](https://ollama.com), ejecuta `ollama pull mxbai-embed-large` y, si Ollama no está en localhost:11434, define `OLLAMA_BASE_URL` en el `.env` del backend.
 
 ## ⚙️ Configuración
 
-Actualmente, la URL del backend está fija en:
-
-- `src/App.jsx` → `const API_URL = 'http://localhost:8000'`
-
-Si necesitas apuntar a otro host/puerto, cambia ese valor.
+La URL del backend se configura con la variable de entorno **`VITE_API_URL`** en `frontend/.env` (por defecto `http://localhost:8000`). El frontend la usa en `src/App.jsx`. Si el backend corre en otro host o puerto, edita `frontend/.env`.
 
 ## 🧪 Scripts útiles
 
@@ -108,9 +114,9 @@ npm run lint      # Linter
 
 ### “Desconectado” en el indicador
 
-- Confirma que el backend responde: `GET http://localhost:8000/health`
-- Verifica CORS en el backend (debe permitir `http://localhost:5173` o `*`)
-- Asegúrate de que **Redis** está levantado y `REDIS_URL` está bien configurada (el backend no arranca si falta)
+- Confirma que el backend responde: `GET <VITE_API_URL>/health` (p. ej. `http://localhost:8000/health`)
+- Verifica que `VITE_API_URL` en `frontend/.env` coincida con la URL y puerto donde corre el backend
+- Verifica CORS en el backend (debe permitir el origen del frontend, p. ej. `http://localhost:5173`)
 
 ### El chat no muestra respuesta al iniciar
 
@@ -125,7 +131,7 @@ npm run build
 ```
 
 El output queda en `dist/`. Puedes servirlo con cualquier hosting estático (Nginx, GitHub Pages, Vercel, etc.).  
-Si despliegas el frontend, recuerda **ajustar `API_URL`** para apuntar al backend desplegado.
+Si despliegas el frontend, configura **`VITE_API_URL`** en el entorno de build para apuntar al backend desplegado.
 
 ## 🔒 Seguridad
 

@@ -1,6 +1,5 @@
 import uuid
 import json
-import redis
 import time
 import os
 from dotenv import load_dotenv
@@ -10,20 +9,22 @@ from typing import List, Dict, Optional, Any
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import messages_to_dict
 from langchain.memory.chat_memory import BaseChatMemory
-from apscheduler.schedulers.background import BackgroundScheduler
 
-from core.agent_orchestrator import AgentOrchestrator
-from core.config_manager import load_all_agent_configs, get_agent_config
+from app.core.agent_orchestrator import AgentOrchestrator
+from app.core.config_manager import load_all_agent_configs, get_agent_config
 import logging
 
-from core.agent_factory import get_agent_orchestrator, memory_cache
-from components.memory.memory_factory import get_memory_for_agent
-from core.config_manager import DEFAULT_AGENT_KEY
+from app.core.agent_factory import get_agent_orchestrator, memory_cache
+from app.components.memory.memory_factory import get_memory_for_agent
+from app.core.config_manager import DEFAULT_AGENT_KEY
 
 load_dotenv()
 app = FastAPI(title="Plataforma de Agentes de IA - Mapfre Seguros")
 
 logger = logging.getLogger(__name__)
+
+# Estado de sesión en memoria (sin Redis)
+session_store: Dict[str, dict] = {}
 
 @app.on_event("startup")
 def startup_event():
@@ -33,10 +34,6 @@ def startup_event():
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 API_KEY_SECRET = os.getenv("API_KEY_SECRET")
-REDIS_URL = os.getenv("REDIS_URL")
-if not REDIS_URL: 
-    raise RuntimeError("REDIS_URL no está configurada.")
-redis_client = redis.Redis.from_url(REDIS_URL)
 
 class InvokeRequest(BaseModel):
     input: str
@@ -60,11 +57,7 @@ async def invoke_agent(request: InvokeRequest, background_tasks: BackgroundTasks
     try:
         session_id = request.session_id or str(uuid.uuid4())
         
-        state_key = f"state:{session_id}"
-        current_state = {}
-        state_data = redis_client.get(state_key)
-        if state_data:
-            current_state = json.loads(state_data)
+        current_state = session_store.get(session_id, {})
         
         # Determinar qué agente usar
         if current_state.get("route") == "triage" or not current_state.get("active_agent_key"):
@@ -87,6 +80,7 @@ async def invoke_agent(request: InvokeRequest, background_tasks: BackgroundTasks
 
         metadata = request.metadata or {}
         metadata["current_state"] = current_state
+        metadata["session_id"] = session_id
 
         final_state = await orchestrator.invoke(request.input, memory, request.model_id, metadata, background_tasks)
         
@@ -101,7 +95,7 @@ async def invoke_agent(request: InvokeRequest, background_tasks: BackgroundTasks
             new_structured_data["active_agent_key"] = active_agent_key
 
         if new_structured_data:
-            redis_client.set(state_key, json.dumps(new_structured_data), ex=3600)
+            session_store[session_id] = new_structured_data
             print(f"--- [Estado] Nuevo estado guardado. Próximo Agente: '{new_structured_data['active_agent_key']}'. Próxima Ruta: '{new_structured_data.get('route')}' ---")
 
         return InvokeResponse(

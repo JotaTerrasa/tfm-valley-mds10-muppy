@@ -9,12 +9,12 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import ValidationError
-from utils.file_loader import load_file_content
+from app.utils.file_loader import load_file_content
 from langgraph.prebuilt import ToolNode
 from langdetect import detect
 
-from schemas.structured_outputs import AgentState as PydanticAgentState
-from tools.registry import get_tool_by_name
+from app.schemas.structured_outputs import AgentState as PydanticAgentState
+from app.tools.registry import get_tool_by_name
 
 class GraphState(TypedDict):
     user_input: str
@@ -59,9 +59,31 @@ class StateMachineStrategy():
     def _create_prompt_template(self, prompt_path: str):
         full_prompt_path = os.path.join(self.agent_base_path, prompt_path)
         template = load_file_content(full_prompt_path)
+        # Escape literal braces so .format() does not treat JSON in prompts as placeholders
+        template = template.replace("{", "{{").replace("}", "}}")
         return ChatPromptTemplate.from_messages([("system", template), ("human", "{input}")])
 
+    @staticmethod
+    def _message_content_to_str(content) -> str:
+        """Normalize LLM message content (str or list of blocks) to a single string for parsing."""
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and block.get("text"):
+                    parts.append(block["text"])
+                else:
+                    parts.append(str(block))
+            return "\n".join(parts) if parts else ""
+        return str(content)
+
     def _parse_llm_output(self, raw_response_text: str) -> dict:
+        raw_response_text = self._message_content_to_str(raw_response_text)
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_response_text, re.DOTALL)
         user_facing_message = raw_response_text
         structured_data = {}
@@ -85,7 +107,7 @@ class StateMachineStrategy():
                 return o.isoformat()
             return str(o)
 
-        history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in state['chat_history']])
+        history_str = "\n".join([f"{msg.type}: {self._message_content_to_str(msg.content)}" for msg in state['chat_history']])
         lang_lock = (state.get('structured_data') or {}).get('lang_lock') or 'es'
         language_instruction = (
             "Instrucción de idioma: Responde SIEMPRE en español. No cambies de idioma."
@@ -117,6 +139,7 @@ class StateMachineStrategy():
             response_content = raw_response.content
             final_raw_response_for_parsing = raw_response
 
+        response_content = self._message_content_to_str(response_content)
         parsed_output = self._parse_llm_output(response_content)
         print(f'--- [Traza Agente] Respuesta para el usuario: {parsed_output["user_facing_message"]} ---')
 
@@ -188,7 +211,7 @@ class StateMachineStrategy():
         if not current_structured_data:
             print("--- [Estado] No se encontró estado previo. Inicializando desde plantilla de configuración. ---")
             current_structured_data = self.initial_state_template.copy()
-            current_structured_data["id"] = memory.chat_memory.session_id or str(uuid.uuid4())
+            current_structured_data["id"] = metadata.get("session_id") or getattr(memory.chat_memory, "session_id", None) or str(uuid.uuid4())
 
         # Detección de idioma
         try:

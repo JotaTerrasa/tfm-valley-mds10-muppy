@@ -1,10 +1,10 @@
 import json
 from typing import Dict, Optional, Any, AsyncGenerator
-from strategies.registry import get_strategy
-from handlers.persistence_handler import handle_persistence
-from core.llm_factory import get_llm
-from utils.cost_calculation import calculate_request_cost
-from tools.registry import get_tool_by_name
+from app.strategies.registry import get_strategy
+from app.handlers.persistence_handler import handle_persistence
+from app.core.llm_factory import get_llm
+from app.utils.cost_calculation import calculate_request_cost
+from app.tools.registry import get_tool_by_name
 from fastapi import BackgroundTasks
 try:
     from google.api_core.exceptions import NotFound as GoogleNotFound

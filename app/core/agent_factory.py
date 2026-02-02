@@ -2,7 +2,7 @@ import logging
 from typing import Dict
 from fastapi import HTTPException
 from langchain.memory.chat_memory import BaseChatMemory
-from core.agent_orchestrator import AgentOrchestrator
+from app.core.agent_orchestrator import AgentOrchestrator
 
 agent_cache: Dict[str, AgentOrchestrator] = {}
 memory_cache: Dict[str, BaseChatMemory] = {}

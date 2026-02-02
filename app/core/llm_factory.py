@@ -1,22 +1,7 @@
 import os
-import redis
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from typing import Dict, Any
-from langchain_community.cache import RedisCache
-from langchain.globals import set_llm_cache
-
-REDIS_URL = os.getenv("REDIS_URL")
-if REDIS_URL:
-    try:
-        print("--- [LLM Factory] Inicializando caché de respuestas de LLM con Redis... ---")
-        redis_client = redis.from_url(REDIS_URL)
-        redis_client.ping()
-        set_llm_cache(RedisCache(redis_client))
-        print("--- [LLM Factory] Caché de LLM con Redis configurada con éxito. ---")
-    except redis.exceptions.ConnectionError as e:
-        print(f"--- [LLM Factory] ADVERTENCIA: No se pudo conectar a Redis para la caché de LLM. Error: {e} ---")
-        print("--- [LLM Factory] La aplicación continuará sin caché de respuestas. ---")
 
 def get_llm(llm_config: Dict[str, Any]):
     provider = llm_config.get("provider")
@@ -25,7 +10,18 @@ def get_llm(llm_config: Dict[str, Any]):
     print(f"--- [LLM Factory] Creando instancia para proveedor: {provider}, modelo: {model_name} ---")
 
     if provider == "google":
-        return ChatVertexAI(model_name=model_name, temperature=1)
+        # API key de Google AI Studio (https://aistudio.google.com/app/apikey)
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GOOGLE_API_KEY no está configurada. "
+                "Crea una API key en https://aistudio.google.com/app/apikey y añádela al .env"
+            )
+        return ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=api_key,
+            temperature=1,
+        )
     elif provider == "openai":
         return ChatOpenAI(model_name=model_name, temperature=1)
     else:

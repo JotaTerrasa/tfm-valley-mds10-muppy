@@ -27,6 +27,7 @@ Uso:
     result = search_insurance_info("franquicia", insurance_type="moto", product="moto_todo_riesgo")
 """
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any
@@ -91,9 +92,11 @@ class VectorStore:
         """
         logger.info(f"Initializing VectorStore with model: {embedding_model}")
         
-        # Usar embeddings locales con Ollama
+        # Usar embeddings locales con Ollama (base_url opcional vía OLLAMA_BASE_URL)
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.embeddings = OllamaEmbeddings(
-            model=embedding_model
+            model=embedding_model,
+            base_url=ollama_base_url,
         )
         
         # Chunk splitter optimizado para documentos de seguros

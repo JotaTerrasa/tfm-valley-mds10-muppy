@@ -6,11 +6,11 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=flat-square&logo=chainlink&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)
 
 **🏆 Sistema multiagente avanzado para gestión integral de seguros**
 
-[🚀 Inicio Rápido](#-inicio-rápido) • [📖 Documentación](#-documentación) • [🛠️ API](#-api-endpoints) • [🤝 Contribuir](#-contribuir)
+[📋 Cómo levantar (dev)](#-guía-de-puesta-en-marcha-desarrollo) • [📚 RAG y Ollama](#7-rag-y-ollama-base-de-conocimientos) • [🛠️ API](#-api-reference) • [🤝 Contribuir](#-contribuir)
 
 ---
 
@@ -163,6 +163,8 @@ Transforma la experiencia de seguros tradicional en una **conversación intelige
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Nota:** En la implementación actual, la memoria de conversaciones y la caché del LLM están **en proceso** (no se usa Redis). El RAG opcional usa **Ollama** (embeddings) y **ChromaDB** para la base de conocimientos.
+
 ### 🎭 Los 4 Agentes Especializados
 
 | Agente | 🎯 Propósito | 🤖 Estrategia | 📋 Funciones Clave |
@@ -174,7 +176,186 @@ Transforma la experiencia de seguros tradicional en una **conversación intelige
 
 ---
 
-## ⚡ Inicio Rápido (5 minutos)
+## 📋 Guía de puesta en marcha (desarrollo)
+
+### Requisitos
+
+- **Python 3.9+** — `python3 --version` o `python --version`
+- **Node.js 18+** y **npm** — para el frontend (`node --version`, `npm --version`)
+- **Git** — para clonar el repo
+- **Cuenta en Google AI Studio** — para obtener una API key de Gemini (gratuita)
+
+No se usa Redis: la memoria de conversaciones y el estado de sesión están en memoria dentro del proceso del backend.
+
+---
+
+### 1. Clonar y preparar el backend
+
+```bash
+git clone https://github.com/ssillerom/tfm-valley-mds10-muppy.git
+cd tfm-valley-mds10-muppy
+
+# Entorno virtual
+python3 -m venv venv
+
+# Activar (Linux/macOS)
+source venv/bin/activate
+# En Windows: venv\Scripts\activate
+
+# Dependencias
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 2. Configurar variables de entorno del backend
+
+En la **raíz del proyecto** (donde está `app/` y `requirements.txt`):
+
+```bash
+cp .env.example .env
+```
+
+Edita `.env` y rellena al menos:
+
+| Variable | Obligatoria | Descripción |
+|----------|-------------|-------------|
+| `GOOGLE_API_KEY` | **Sí** | API key de Google AI Studio (Gemini). Crear en: https://aistudio.google.com/app/apikey |
+| `API_KEY_SECRET` | No | Clave para proteger la API (si se usa en el código) |
+| `OLLAMA_BASE_URL` | No | URL de Ollama para el RAG (embeddings). Por defecto `http://localhost:11434`. Solo necesaria si Ollama está en otro host/puerto. |
+
+Ejemplo mínimo de `.env` en la raíz:
+
+```env
+GOOGLE_API_KEY=tu_api_key_de_google_ai_studio
+```
+
+### 3. Levantar el backend
+
+Desde la raíz del proyecto, con el venv activado:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Comprobar:
+
+```bash
+curl http://localhost:8000/health
+# Debe devolver: {"status":"healthy"}
+```
+
+### 4. Configurar y levantar el frontend
+
+En **otra terminal**, desde la raíz del proyecto:
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+```
+
+Edita `frontend/.env`:
+
+| Variable | Descripción |
+|----------|-------------|
+| `VITE_API_URL` | URL del backend. En local suele ser `http://localhost:8000`. Si el backend corre en otro host/puerto, cámbialo aquí (ej. `http://localhost:8001`). |
+
+Ejemplo `frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:8000
+```
+
+Levantar el frontend:
+
+```bash
+npm run dev
+```
+
+Abre en el navegador la URL que muestre Vite (normalmente `http://localhost:5173`). El chat ya debería hablar con el backend.
+
+### 5. Resumen de comandos
+
+| Dónde | Comando |
+|-------|--------|
+| Raíz del proyecto | `source venv/bin/activate` → `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` |
+| `frontend/` | `npm run dev` |
+
+### 6. Problemas frecuentes
+
+- **Puerto 8000 ocupado**: Mata procesos con `lsof -ti :8000 | xargs kill -9` (Linux/macOS) o levanta el backend en otro puerto, p. ej. `--port 8001`, y pon en `frontend/.env` `VITE_API_URL=http://localhost:8001`.
+- **El frontend no conecta**: Comprueba que el backend esté en marcha y que `VITE_API_URL` en `frontend/.env` coincida con la URL y puerto del backend.
+- **Error de API / agente**: Verifica que `GOOGLE_API_KEY` en el `.env` de la raíz sea correcta y tenga cuota en Google AI Studio.
+
+### 7. RAG y Ollama (base de conocimientos)
+
+El sistema incluye un **RAG** (Retrieval-Augmented Generation) para que los agentes consulten documentación de seguros (coche, hogar, moto) desde la carpeta `data/`. Si quieres usar la herramienta **search_insurance_info** (consultas sobre coberturas, exclusiones, etc.), necesitas tener **Ollama** instalado y el modelo de embeddings descargado.
+
+#### Qué hay que tener instalado
+
+1. **Ollama**  
+   - Descarga e instalación: [ollama.com](https://ollama.com)  
+   - Tras instalar, Ollama suele arrancar solo y exponer la API en `http://localhost:11434`. Si no, ejecuta: `ollama serve`.
+
+2. **Modelo de embeddings**  
+   - Usamos **mxbai-embed-large** ([ollama.com/library/mxbai-embed-large](https://ollama.com/library/mxbai-embed-large)), de mixedbread.ai.  
+   - Descargar el modelo en Ollama:
+   ```bash
+   ollama pull mxbai-embed-large
+   ```
+
+#### Cómo funciona el RAG
+
+1. **Documentos**: Los Markdown de `data/` (p. ej. `data/seguro_coche/`, `data/seguro_hogar/`, `data/seguro_moto/`) se cargan con metadatos (`insurance_type`, `product`, `doc_type`).
+2. **Fragmentación**: Se trocean con `RecursiveCharacterTextSplitter` (chunk 500, overlap 100) optimizado para títulos Markdown.
+3. **Embeddings**: Cada fragmento se convierte en vector con **Ollama** y el modelo **mxbai-embed-large**.
+4. **Almacenamiento**: Los vectores se guardan en **ChromaDB** (carpeta `chroma_db/`).
+5. **Búsqueda**: Los agentes usan la herramienta `search_insurance_info` para hacer búsqueda semántica (y opcionalmente filtrar por tipo de seguro, producto o tipo de documento).
+
+Si **Ollama no está instalado o no está corriendo**, el chat seguirá funcionando, pero las llamadas a `search_insurance_info` fallarán cuando un agente intente consultar la base de conocimientos.
+
+#### Reconstruir el índice RAG
+
+Si añades o cambias archivos en `data/`, reconstruye el índice desde la raíz del proyecto (venv activado):
+
+```bash
+python -m app.rag.vector_store rebuild
+```
+
+La **primera vez** puede tardar **varios minutos** (10–30 según máquina): se generan miles de chunks y cada uno se embede con Ollama. Deja que termine.
+
+Estadísticas del índice:
+
+```bash
+python -m app.rag.vector_store stats
+```
+
+Probar una búsqueda:
+
+```bash
+python -m app.rag.vector_store search "coberturas" coche
+```
+
+#### Variable de entorno opcional (Ollama)
+
+Si Ollama no corre en `http://localhost:11434`, define en el `.env` de la raíz:
+
+```env
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+(o la URL donde tengas Ollama). Si no la pones, se usa `http://localhost:11434` por defecto.
+
+#### Dependencias Python del RAG
+
+En `requirements.txt` están ya incluidas: `chromadb`, `langchain-chroma`, `langchain-ollama`, `langchain-text-splitters`. Se instalan con `pip install -r requirements.txt`. No hace falta configurar nada más en el `.env` para Ollama si usas el valor por defecto.
+
+#### Problemas con el RAG
+
+- **"Connection refused" o error al hacer rebuild/search**: Comprueba que Ollama esté en marcha (`ollama serve` si no arranca solo) y que el modelo esté descargado (`ollama pull mxbai-embed-large`).
+- **Ollama en otra máquina o puerto**: Pon en el `.env` de la raíz `OLLAMA_BASE_URL=http://IP:11434` (o la URL que uses).
+
+---
 
 ## 🏗️ Arquitectura del Sistema
 
@@ -188,7 +369,7 @@ Usuario → API REST → Agentes Especializados → Respuesta
 
 - **🤖 Agentes Conversacionales**: 4 especialistas diferentes
 - **🛠️ Herramientas**: Funciones específicas (calcular precios, crear pagos, etc.)
-- **💾 Memoria**: Recuerda el contexto de cada conversación
+- **💾 Memoria**: Recuerda el contexto de cada conversación (en memoria, sin Redis)
 - **⚙️ Estrategias**: Dos formas de procesar conversaciones (simple y compleja)
 
 ### Los 4 Agentes Especializados
@@ -200,54 +381,6 @@ Usuario → API REST → Agentes Especializados → Respuesta
 | **📝 Contract** | Guía el proceso de contratación | Cliente quiere comprar |
 | **🆘 Support** | Resuelve dudas de pólizas | Cliente ya tiene seguro |
 
-### 🚀 Prerrequisitos (1 minuto)
-
-Antes de empezar, verifica que tienes instalado:
-- ✅ **Python 3.8+** - `python --version`
-- ✅ **Git** - `git --version`
-- ✅ **Redis** - `redis-cli ping` (debería responder PONG)
-
-### 📦 Instalación Express (2 minutos)
-
-```bash
-# 1. Clona el repositorio
-git clone https://github.com/ssillerom/tfm-valley-mds10-muppy.git
-cd tfm-valley-mds10-muppy
-
-# 2. Cambia a rama Dev
-git checkout Dev
-
-# 3. Instala dependencias
-pip install -r requirements.txt
-
-# 4. Configura variables básicas
-cp .env.example .env  # Si existe, o crea uno manual
-```
-
-Edita tu `.env` con lo mínimo necesario:
-```env
-API_KEY_SECRET=mi_clave_secreta_basica_para_desarrollo
-REDIS_URL=redis://localhost:6379
-```
-
-### ▶️ Primer Test (2 minutos)
-
-```bash
-# Inicia el servidor
-uvicorn app.main:app --reload
-
-# En otra terminal, prueba
-curl http://localhost:8000/health
-# ✅ Deberías ver: {"status": "healthy"}
-
-# Prueba una conversación básica
-curl -X POST "http://localhost:8000/invoke" \
-  -H "Content-Type: application/json" \
-  -d '{"input": "Hola", "session_id": "test1"}'
-```
-
-¡Listo! Tu sistema de agentes ya está funcionando. 🎉
-
 ---
 
 ## 🚀 Instalación y Configuración Completa
@@ -256,40 +389,13 @@ curl -X POST "http://localhost:8000/invoke" \
 
 Antes de comenzar, asegúrate de tener instalado:
 
-- **Python 3.8+**: Descárgalo de [python.org](https://python.org)
+- **Python 3.9+**: Descárgalo de [python.org](https://python.org)
+- **Node.js 18+** y **npm**: Para el frontend (descarga en [nodejs.org](https://nodejs.org))
 - **Git**: Para clonar el repositorio
-- **Redis**: Base de datos para cache y sesiones
-- **Cuenta de Google**: Para Google Sheets (opcional para desarrollo local)
+- **Cuenta en Google AI Studio**: Para obtener la API key de Gemini (gratuita, en [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))
+- **Ollama** (opcional, solo para RAG): Para que los agentes consulten la base de conocimientos (`search_insurance_info`). Descarga en [ollama.com](https://ollama.com) y luego `ollama pull mxbai-embed-large`.
 
-#### Instalación de Redis
-
-**Windows:**
-```bash
-# Usando Chocolatey (recomendado)
-choco install redis-64
-
-# O descarga desde: https://redis.io/download
-```
-
-**Linux/Ubuntu:**
-```bash
-sudo apt update
-sudo apt install redis-server
-sudo systemctl start redis-server
-```
-
-**macOS:**
-```bash
-# Usando Homebrew
-brew install redis
-brew services start redis
-```
-
-**Verificar que Redis funciona:**
-```bash
-redis-cli ping
-# Debería responder: PONG
-```
+**Nota:** El proyecto no usa Redis; la memoria de conversaciones y el estado de sesión están en memoria dentro del proceso del backend.
 
 ### 🔧 Instalación Paso a Paso
 
@@ -336,43 +442,33 @@ pip list | grep fastapi
 
 ### ⚙️ Configuración del Entorno
 
-#### Paso 4: Crear archivo .env
+#### Paso 4: Crear archivo .env (backend)
 
-Crea un archivo llamado `.env` en la raíz del proyecto con esta configuración:
+Crea un archivo `.env` en la **raíz del proyecto** (junto a `app/` y `requirements.txt`). Puedes copiar desde la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Contenido mínimo necesario:
 
 ```env
-# ======================================
-# CONFIGURACIÓN BÁSICA
-# ======================================
+# Obligatorio: API key de Google AI Studio (Gemini)
+# Obtener en: https://aistudio.google.com/app/apikey
+GOOGLE_API_KEY=tu_api_key_aqui
 
-# Clave secreta para la API (genera una segura para producción)
-API_KEY_SECRET=mi_clave_super_secreta_para_desarrollo_12345
+# Opcional: clave para proteger la API
+# API_KEY_SECRET=mi_clave_secreta
 
-# URL de Redis (ajusta según tu instalación)
-REDIS_URL=redis://localhost:6379
+# Opcional: URL de Ollama para RAG (embeddings). Por defecto http://localhost:11434
+# OLLAMA_BASE_URL=http://localhost:11434
+```
 
-# ======================================
-# WHATSAPP BUSINESS API (OPCIONAL)
-# ======================================
+El frontend tiene su propio `.env` dentro de `frontend/`. Copia `frontend/.env.example` a `frontend/.env` y configura:
 
-# Solo si vas a usar WhatsApp
-PHONE_NUMBER_ID=tu_numero_de_telefono_id
-WHATSAPP_ACCESS_TOKEN=tu_token_de_acceso_whatsapp
-WHATSAPP_APP_SECRET=tu_app_secret_whatsapp
-WHATSAPP_VERIFY_TOKEN=tu_verify_token_whatsapp
-
-# ======================================
-# GOOGLE CLOUD (OPCIONAL)
-# ======================================
-
-# Para Google Sheets
-# Credenciales de Google Sheets API
-GOOGLE_SHEETS_CREDENTIALS=ruta/a/tu/credentials.json
-GOOGLE_SHEETS_SPREADSHEET_ID=tu_spreadsheet_id
-
-# ======================================
-# OTROS SERVICIOS (OPCIONAL)
-# ======================================
+```env
+# URL del backend (en local normalmente)
+VITE_API_URL=http://localhost:8000
 ```
 
 #### Paso 5: Configurar Google Sheets (opcional pero recomendado)
@@ -399,39 +495,35 @@ Si quieres usar Google Sheets para persistir datos:
 
 ### ▶️ Ejecutar el Sistema
 
-#### Paso 6: Iniciar el servidor
+#### Paso 6: Iniciar el backend
 
 ```bash
-# Asegúrate de que el entorno virtual esté activado
-# Deberías ver (venv) al inicio de la línea
-
+# Asegúrate de que el entorno virtual esté activado (venv)
 # Ejecutar con recarga automática (desarrollo)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# O para producción:
-# uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-#### Paso 7: Verificar que funciona
-
-Abre otra terminal y prueba:
+#### Paso 7: Iniciar el frontend (otra terminal)
 
 ```bash
-# Verificar estado del servicio
-curl http://localhost:8000/health
+cd frontend
+npm install   # solo la primera vez
+npm run dev
+```
 
-# Deberías obtener:
-# {"status": "healthy"}
+Abre en el navegador la URL que muestre Vite (p. ej. `http://localhost:5173`). El chat usará el backend si `VITE_API_URL` en `frontend/.env` apunta a `http://localhost:8000`.
+
+#### Paso 8: Verificar que funciona
+
+```bash
+# Backend
+curl http://localhost:8000/health
+# Debe devolver: {"status":"healthy"}
 
 # Probar el endpoint principal
 curl -X POST "http://localhost:8000/invoke" \
   -H "Content-Type: application/json" \
-  -d '{
-    "input": "Hola, quiero información sobre seguros",
-    "session_id": "test123"
-  }'
-
-# Deberías obtener una respuesta del agente
+  -d '{"input": "Hola, quiero información sobre seguros", "session_id": "test123"}'
 ```
 
 ### 🔍 Solución de Problemas
@@ -446,15 +538,14 @@ source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
-#### Error: "Redis connection refused"
+#### Error: "Puerto 8000 ya en uso" o "Address already in use"
 ```bash
-# Verificar que Redis esté ejecutándose
-redis-cli ping
+# Liberar el puerto (Linux/macOS):
+lsof -ti :8000 | xargs kill -9
 
-# Si no responde, iniciar Redis:
-# Windows: redis-server
-# Linux: sudo systemctl start redis-server
-# macOS: brew services start redis
+# O levantar el backend en otro puerto:
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+# y en frontend/.env poner: VITE_API_URL=http://localhost:8001
 ```
 
 #### Error: "Port 8000 already in use"
@@ -487,7 +578,7 @@ Este script verifica:
 - ✅ Versión de Python (3.8+)
 - ✅ Todas las dependencias instaladas
 - ✅ Archivo .env configurado
-- ✅ Conexión con Redis
+- ✅ Variables de entorno (GOOGLE_API_KEY, opcional OLLAMA_BASE_URL para RAG)
 - ✅ Aplicación importable
 
 ### 🚀 Próximos Pasos Después de la Instalación
@@ -523,7 +614,7 @@ curl http://localhost:8000/health
 
 **Códigos de Estado:**
 - `200` - Sistema funcionando correctamente
-- `503` - Servicios no disponibles (Redis, etc.)
+- `503` - Servicios no disponibles
 
 ---
 
@@ -851,7 +942,7 @@ Importa esta colección para testing visual:
 
 - **FastAPI**: API web rápida y moderna
 - **LangGraph**: Framework para agentes conversacionales
-- **Redis**: Memoria y cache de conversaciones
+- **Memoria en proceso**: Historial de conversaciones y estado de sesión (sin Redis)
 - **Pydantic**: Validación de datos
 - **Uvicorn**: Servidor ASGI
 
@@ -955,8 +1046,7 @@ Cada agente se define con un archivo JSON:
 
 - **Herramientas placeholder**: Las funciones en `insurance_tools.py` son ejemplos - necesitan conectarse a sistemas reales de aseguradoras
 - **Prompts genéricos**: Están preparados para seguros pero pueden necesitar ajustes específicos de productos de la aseguradora
-- **Base de datos**: Actualmente usa Redis para conversaciones, pero necesitarás Google Sheets para datos persistentes
-- **Memoria**: El sistema utiliza Redis para almacenar el historial de conversaciones y estados de sesión
+- **Memoria**: El sistema utiliza memoria en proceso para el historial de conversaciones y estados de sesión (no usa Redis)
 - **Seguridad**: Configura las variables de entorno correctamente antes de usar en producción
 
 ---
@@ -1135,8 +1225,8 @@ tail -f logs/app.log | grep "quote_agent"
 
 ### 💾 Sobre Memoria y Almacenamiento
 
-**¿Qué pasa si Redis se cae?**
-> Las conversaciones se pierden temporalmente. Al reconectar, los usuarios deberán reiniciar su conversación.
+**¿El proyecto usa Redis?**
+> No. La memoria de conversaciones y el estado de sesión están en memoria dentro del proceso del backend. Si reinicias el backend, las sesiones se pierden.
 
 **¿Cuánto tiempo duran las sesiones?**
 > Por defecto 1 hora (3600 segundos), configurable en el código.
@@ -1150,9 +1240,9 @@ tail -f logs/app.log | grep "quote_agent"
 > Depende del hardware. En un servidor básico: 50-100 conversaciones simultáneas.
 
 **¿Cómo optimizar para alta carga?**
-> - Usar Redis Cluster para memoria distribuida
 > - Implementar cache de respuestas
 > - Usar balanceo de carga con múltiples instancias
+> - Para memoria distribuida entre instancias, se podría integrar Redis u otro almacén externo (no incluido por defecto).
 
 ### 🔧 Sobre Desarrollo
 
@@ -1167,8 +1257,8 @@ tail -f logs/app.log | grep "quote_agent"
 
 ### 🐛 Sobre Errores Comunes
 
-**Error: "Redis connection refused"**
-> Asegúrate de que Redis esté ejecutándose: `redis-server`
+**Error al usar RAG / search_insurance_info (connection refused, etc.)**
+> El RAG usa Ollama para embeddings. Asegúrate de que Ollama esté en marcha (`ollama serve` si no arranca solo) y de que el modelo esté descargado (`ollama pull mxbai-embed-large`). Si Ollama está en otro host/puerto, define `OLLAMA_BASE_URL` en el `.env` de la raíz.
 
 **Error: "Agent not found"**
 > Verifica que el directorio del agente existe en `agents/` y tiene un `config.json` válido.

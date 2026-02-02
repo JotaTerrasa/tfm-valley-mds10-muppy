@@ -33,7 +33,7 @@ const NewChatIcon = () => (
   </svg>
 )
 
-const API_URL = 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function App() {
   const [messages, setMessages] = useState([])
@@ -101,7 +101,11 @@ function App() {
           }),
         })
 
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}))
+          const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
+          throw new Error(detail)
+        }
         const data = await response.json()
 
         if (data.structured_data?.active_agent_key) {
@@ -122,11 +126,12 @@ function App() {
         setMessages([botMessage])
       } catch (error) {
         console.error('Error:', error)
+        const message = error.message || 'Error desconocido'
         setMessages([
           {
             id: Date.now(),
             type: 'bot',
-            text: '❌ No pude conectar con el servidor. Asegúrate de que el backend esté ejecutándose en `http://localhost:8000`',
+            text: `❌ ${message}`,
             timestamp: new Date(),
             isError: true,
           },
@@ -188,7 +193,9 @@ function App() {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errBody = await response.json().catch(() => ({}))
+        const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
+        throw new Error(detail)
       }
 
       const data = await response.json()
@@ -211,10 +218,11 @@ function App() {
 
     } catch (error) {
       console.error('Error:', error)
+      const message = error.message || 'Error desconocido'
       const errorMessage = {
         id: Date.now() + 1,
         type: 'bot',
-        text: '❌ No pude conectar con el servidor. Asegúrate de que el backend esté ejecutándose en `http://localhost:8000`',
+        text: `❌ ${message}`,
         timestamp: new Date(),
         isError: true
       }

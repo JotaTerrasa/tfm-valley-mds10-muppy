@@ -6,8 +6,8 @@ from typing import Dict, Optional, Any
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
-from utils.file_loader import load_file_content
-from schemas.structured_outputs import FinalAnswer, AgentState
+from app.utils.file_loader import load_file_content
+from app.schemas.structured_outputs import FinalAnswer, AgentState
 
 class GenerativeStrategy:
     def __init__(self, llm, tools, config):
