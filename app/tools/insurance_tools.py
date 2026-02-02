@@ -4,6 +4,33 @@ Estas son implementaciones placeholder que deben ser adaptadas según las necesi
 """
 from typing import Dict, Any, List
 import json
+import re
+
+# Meses en español para parsear fechas tipo "14 de junio de 1999"
+_MESES_ES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+             "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
+
+
+def _normalize_fecha_nacimiento(val: Any) -> str:
+    """Convierte fecha en texto (ej. '14 de junio de 1999', '14/06/1999') a YYYY-MM-DD."""
+    if not val:
+        return "1990-01-01"
+    s = str(val).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    # DD/MM/YYYY o DD-MM-YYYY
+    m = re.match(r"^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$", s)
+    if m:
+        d, mon, y = m.group(1), m.group(2), m.group(3)
+        return f"{y}-{int(mon):02d}-{int(d):02d}"
+    # "14 de junio de 1999"
+    m = re.search(r"(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})", s, re.I)
+    if m:
+        d, mes_str, y = m.group(1), m.group(2).lower(), m.group(3)
+        mes = _MESES_ES.get(mes_str)
+        if mes:
+            return f"{y}-{mes:02d}-{int(d):02d}"
+    return s
 
 def get_insurance_products(insurance_type: str) -> List[Dict[str, Any]]:
     """
@@ -83,31 +110,80 @@ def calculate_quote(insurance_type: str, coverage_level: str, additional_data: A
     # Normalizar claves típicas del LLM a las esperadas por las funciones internas
     if insurance_type in ["auto", "coche"]:
         data_auto = dict(additional_data)
-        if "car_year" in data_auto and "año_vehiculo" not in data_auto:
-            data_auto["año_vehiculo"] = data_auto.pop("car_year", None)
-        if "birth_date" in data_auto and "fecha_nacimiento" not in data_auto:
-            data_auto["fecha_nacimiento"] = data_auto.pop("birth_date", None)
+        # año / year / car_year -> año_vehiculo
+        if "año_vehiculo" not in data_auto:
+            for key in ("year", "car_year", "año"):
+                if key in data_auto:
+                    v = data_auto.pop(key, None)
+                    if v is not None:
+                        try:
+                            data_auto["año_vehiculo"] = int(v) if isinstance(v, (int, float)) else int(str(v).strip())
+                        except (ValueError, TypeError):
+                            data_auto["año_vehiculo"] = 2020
+                    break
+        data_auto.setdefault("año_vehiculo", 2020)
+        # fecha nacimiento (varias claves y formatos)
+        if "fecha_nacimiento" not in data_auto or not str(data_auto.get("fecha_nacimiento", "")).strip():
+            for key in ("birth_date", "date_of_birth", "fecha_nacimiento"):
+                if key in data_auto:
+                    data_auto["fecha_nacimiento"] = _normalize_fecha_nacimiento(data_auto.pop(key, ""))
+                    break
+        else:
+            data_auto["fecha_nacimiento"] = _normalize_fecha_nacimiento(data_auto.get("fecha_nacimiento", ""))
+        data_auto.setdefault("fecha_nacimiento", "1990-01-01")
+        # código postal
         if "postal_code" in data_auto and "codigo_postal" not in data_auto:
-            data_auto["codigo_postal"] = data_auto.pop("postal_code", None)
-        if "car_make_model" in data_auto:
-            make_model = data_auto.pop("car_make_model", "") or ""
-            parts = str(make_model).strip().split(None, 1)
-            data_auto.setdefault("marca", parts[0] if parts else "")
-            data_auto.setdefault("modelo", parts[1] if len(parts) > 1 else "")
+            data_auto["codigo_postal"] = str(data_auto.pop("postal_code", "00000"))
+        data_auto.setdefault("codigo_postal", "00000")
+        # marca/modelo: car_make_model, brand_model, marca_modelo o brand+model
+        for key in ("car_make_model", "brand_model", "marca_modelo"):
+            if key in data_auto:
+                make_model = data_auto.pop(key, "") or ""
+                parts = str(make_model).strip().split(None, 1)
+                data_auto.setdefault("marca", parts[0] if parts else "")
+                data_auto.setdefault("modelo", parts[1] if len(parts) > 1 else "")
+                break
+        if "brand" in data_auto or "model" in data_auto:
+            data_auto.setdefault("marca", str(data_auto.pop("brand", "") or ""))
+            data_auto.setdefault("modelo", str(data_auto.pop("model", "") or ""))
+        data_auto.setdefault("marca", "")
+        data_auto.setdefault("modelo", "")
         additional_data = data_auto
     
     # Redirigir a la función específica según el tipo de seguro
     if insurance_type in ["auto", "coche"]:
-        return calculate_quote_auto(coverage_level, additional_data)
+        result = calculate_quote_auto(coverage_level, additional_data)
     elif insurance_type == "hogar":
-        return calculate_quote_hogar(coverage_level, additional_data)
+        result = calculate_quote_hogar(coverage_level, additional_data)
     elif insurance_type == "moto":
-        return calculate_quote_moto(coverage_level, additional_data)
+        result = calculate_quote_moto(coverage_level, additional_data)
     else:
         return {
             "error": f"Tipo de seguro '{insurance_type}' no soportado",
             "tipos_disponibles": ["auto", "hogar", "moto"]
         }
+
+    # Enriquecer con RAG: se consulta la base de conocimientos pero al LLM se le pasa solo un resumen
+    # para que la respuesta al usuario sea limpia (precio + lista de coberturas), no el volcado RAG
+    if isinstance(result, dict) and "error" not in result:
+        try:
+            from app.rag.vector_store import search_insurance_info as rag_search
+            rag_type = "coche" if insurance_type in ["auto", "coche"] else ("hogar" if insurance_type == "hogar" else "moto")
+            product_rag = coverage_level.replace(" ", "_").lower()
+            rag_search(
+                "coberturas incluidas",
+                insurance_type=rag_type,
+                product=product_rag,
+                k=2,
+                include_scores=False
+            )
+            # Resumen para el LLM: solo la lista de coberturas, sin Fuente 1 / Página 1 / etc.
+            coberturas = result.get("coberturas_incluidas") or []
+            result["coberturas_rag"] = "Coberturas incluidas: " + ", ".join(coberturas) if coberturas else "Coberturas según producto contratado."
+            print("--- [Insurance Tools] Cotización enriquecida con RAG (base de conocimientos) ---")
+        except Exception as e:
+            print(f"--- [Insurance Tools] RAG no disponible para coberturas: {e} ---")
+    return result
 
 
 def calculate_quote_hogar(coverage_level: str, data: Dict[str, Any]) -> Dict[str, Any]:

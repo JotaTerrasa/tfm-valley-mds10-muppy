@@ -314,6 +314,22 @@ El sistema incluye un **RAG** (Retrieval-Augmented Generation) para que los agen
 
 Si **Ollama no está instalado o no está corriendo**, el chat seguirá funcionando, pero las llamadas a `search_insurance_info` fallarán cuando un agente intente consultar la base de conocimientos.
 
+#### Cotización con RAG
+
+Cada cotización (`calculate_quote`) consulta **automáticamente** la base de conocimientos (ChromaDB + Ollama) para obtener las coberturas. Las coberturas que se muestran al usuario salen del RAG cuando está disponible.
+
+**Para que funcione:**
+
+1. **Ollama en marcha** (p. ej. `ollama serve` o que arranque solo).
+2. **`OLLAMA_BASE_URL` en `.env`** (por defecto `http://localhost:11434` si Ollama está en local).
+3. **Índice RAG creado** (la primera vez o si cambias documentos en `data/`):
+   ```bash
+   python -m app.rag.vector_store rebuild
+   ```
+   Descarga el modelo de embeddings si hace falta: `ollama pull mxbai-embed-large`.
+
+Cuando cotices y el RAG esté disponible, en el **terminal del backend** verás el mensaje: `--- [Insurance Tools] Cotización enriquecida con RAG (base de conocimientos) ---`. Si el RAG no está disponible (Ollama apagado, índice vacío, etc.), la cotización se devuelve igual y las coberturas salen de la lista interna del cálculo.
+
 #### Reconstruir el índice RAG
 
 Si añades o cambias archivos en `data/`, reconstruye el índice desde la raíz del proyecto (venv activado):

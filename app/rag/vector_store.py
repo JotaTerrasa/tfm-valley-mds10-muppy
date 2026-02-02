@@ -569,10 +569,10 @@ def search_insurance_info(
             if meta_doc_type:
                 header += f" | Tipo doc: {meta_doc_type}"
             
-            # Truncate content if too long
+            # Truncate content per chunk to keep responses fast
             content = doc.page_content
-            if len(content) > 1500:
-                content = content[:1500] + "..."
+            if len(content) > 800:
+                content = content[:800] + "..."
             
             formatted_results.append(f"{header}\n{content}")
         
@@ -589,8 +589,9 @@ def search_insurance_info(
         if not results:
             return "No se encontró información relevante en la base de conocimientos."
         
-        # Format results
+        # Format results (truncate per chunk for faster LLM processing)
         formatted_results = []
+        max_content_per_doc = 800
         for i, doc in enumerate(results, 1):
             source = doc.metadata.get("filename", "Desconocido")
             meta_product = doc.metadata.get("product", "")
@@ -605,10 +606,9 @@ def search_insurance_info(
             if meta_doc_type:
                 header += f" | Tipo doc: {meta_doc_type}"
             
-            # Truncate content if too long
             content = doc.page_content
-            if len(content) > 1500:
-                content = content[:1500] + "..."
+            if len(content) > max_content_per_doc:
+                content = content[:max_content_per_doc] + "..."
             
             formatted_results.append(f"{header}\n{content}")
         

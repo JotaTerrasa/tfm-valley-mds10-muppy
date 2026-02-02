@@ -2,8 +2,9 @@ from pydantic import BaseModel, Field, EmailStr, field_validator, model_validato
 from typing import List, Optional, Dict, Any
 from datetime import date, datetime
 import re
-from stdnum.es import dni, nie
 import dateparser
+
+from app.utils.dni_nif import is_valid_nif
 
 class PartialAddress(BaseModel):
     """Dirección parcial para captura progresiva de datos."""
@@ -91,15 +92,11 @@ class PartialCollectedData(BaseModel):
 
         if id_type and id_number:
             id_type = id_type.lower()
-            if id_type == 'dni':
-                if not dni.is_valid(id_number):
-                    raise ValueError(f'El DNI "{id_number}" no es válido.')
-            elif id_type == 'nie':
-                if not nie.is_valid(id_number):
-                    raise ValueError(f'El NIE "{id_number}" no es válido.')
-            elif id_type == 'pasaporte':
-                if not re.match(r'^[A-Z]{3}[0-9]{6}$', id_number, re.IGNORECASE):
-                    raise ValueError(f'El formato del pasaporte "{id_number}" no es válido.')
+            if not is_valid_nif(id_number, id_type):
+                raise ValueError(
+                    f'El {id_type.upper()} "{id_number}" no es válido. '
+                    'Debe cumplir el algoritmo oficial (DNI/NIE: módulo 23, letra según secuencia TRWAGMYFPDXBNJZSQVHLCKE).'
+                )
         return self
 
 class CollectedData(PartialCollectedData):

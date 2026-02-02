@@ -126,6 +126,7 @@ class StateMachineStrategy():
         
         raw_response = llm_with_tools.invoke(final_messages_for_llm)
 
+        tool_messages = []
         if node_tools and raw_response.tool_calls:
             print(f"--- [Agente] El LLM ha decidido usar una herramienta: {raw_response.tool_calls} ---")
             tool_node = ToolNode(tools=node_tools)
@@ -141,6 +142,30 @@ class StateMachineStrategy():
 
         response_content = self._message_content_to_str(response_content)
         parsed_output = self._parse_llm_output(response_content)
+        # Si el LLM devolvió vacío tras una herramienta (p. ej. calculate_quote), formatear fallback desde el resultado
+        if tool_messages and (not parsed_output["user_facing_message"] or not parsed_output["user_facing_message"].strip()):
+            last_tool = tool_messages[-1]
+            content = getattr(last_tool, "content", None) or ""
+            if isinstance(content, str) and content.strip():
+                try:
+                    tool_result = json.loads(content)
+                    if isinstance(tool_result, dict) and "annual_premium" in tool_result and "error" not in tool_result:
+                        msg = f"Tu cotización: **{tool_result.get('annual_premium')}** {tool_result.get('currency', 'EUR')} anuales"
+                        if tool_result.get("monthly_premium"):
+                            msg += f" ({tool_result['monthly_premium']} EUR/mes)."
+                        else:
+                            msg += "."
+                        # Preferir coberturas del RAG (base de conocimientos) si están presentes
+                        coberturas_rag = tool_result.get("coberturas_rag")
+                        if coberturas_rag and isinstance(coberturas_rag, str) and coberturas_rag.strip() and "No se encontró" not in coberturas_rag:
+                            msg += " " + coberturas_rag.strip()[:600]
+                            if len(coberturas_rag) > 600:
+                                msg += "..."
+                        elif tool_result.get("coberturas_incluidas"):
+                            msg += " Coberturas: " + ", ".join(tool_result["coberturas_incluidas"][:6]) + "."
+                        parsed_output["user_facing_message"] = msg
+                except (json.JSONDecodeError, TypeError):
+                    pass
         print(f'--- [Traza Agente] Respuesta para el usuario: {parsed_output["user_facing_message"]} ---')
 
         token_usage = {}
