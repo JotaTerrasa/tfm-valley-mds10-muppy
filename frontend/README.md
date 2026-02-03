@@ -131,6 +131,8 @@ Puedes desplegar **solo el frontend** desde este mismo repositorio:
 3. Añade la variable **`VITE_API_URL`** con la URL pública de tu backend.
 4. **Deploy**.
 
+Para que el deploy de producción use la rama **Dev**: en el proyecto → **Settings** → **Git** → **Production Branch**, pon **`Dev`** y guarda.
+
 Vercel tirará del repo pero construirá y desplegará únicamente lo que hay en `frontend/`. El `vercel.json` de esta carpeta ya está configurado para Vite.
 
 ### Frontend en Vercel con backend local (ngrok)
