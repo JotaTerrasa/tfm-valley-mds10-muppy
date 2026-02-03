@@ -141,7 +141,7 @@ Si el backend corre en tu máquina y lo expones con **ngrok**:
 
 1. Levanta el backend: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` (desde la raíz del proyecto).
 2. Crea el túnel: `ngrok http 8000 --domain=tu-dominio.ngrok-free.app` (o sin `--domain` si usas URL temporal).
-3. En Vercel → **Settings** → **Environment Variables**: define `VITE_API_URL` = la URL de ngrok (ej. `https://tu-dominio.ngrok-free.app`).
+3. En Vercel → **Settings** → **Environment Variables**: define `VITE_API_URL` = la URL de ngrok **con esquema** (ej. `https://tu-dominio.ngrok-free.app`). Sin `https://` las peticiones pueden dar 404.
 4. Redeploy el frontend.
 
 El frontend envía la cabecera `ngrok-skip-browser-warning: true` en todas las peticiones al backend para evitar la página de aviso de ngrok. Mientras ngrok y el backend estén en marcha, el chat desplegado en Vercel usará tu backend local.

@@ -33,7 +33,11 @@ const NewChatIcon = () => (
   </svg>
 )
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Asegurar URL absoluta (evita 404 cuando en Vercel falta https://)
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = rawApiUrl.startsWith('http://') || rawApiUrl.startsWith('https://')
+  ? rawApiUrl
+  : `https://${rawApiUrl.replace(/^\/*/, '')}`
 
 // Header para ngrok (plan gratuito): evita la página intersticial y deja pasar la petición al backend
 const API_HEADERS = {
