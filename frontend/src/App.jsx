@@ -80,7 +80,8 @@ function App() {
 
   const handleLoginSuccess = (newToken) => {
     localStorage.setItem(AUTH_TOKEN_KEY, newToken)
-    setToken(newToken)
+    // Recarga para montar el chat con token y que los efectos (conexión, auto-inicio) se ejecuten
+    window.location.reload()
   }
 
   const handleLogout = () => {
@@ -90,6 +91,8 @@ function App() {
     setMessages([])
     setConnectionStatus('checking')
     bootstrappedSessionsRef.current.clear()
+    // Recarga para mostrar la pantalla de login
+    window.location.reload()
   }
 
   const handleUnauthorized = () => {
