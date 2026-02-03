@@ -25,6 +25,7 @@ from app.auth import (
     get_current_user_optional,
     register_user,
 )
+from app.auth import LOGIN_USER as _ENV_LOGIN_USER
 
 load_dotenv()
 app = FastAPI(title="Plataforma de Agentes de IA - Mapfre Seguros")
@@ -39,7 +40,10 @@ def startup_event():
     load_all_agent_configs("agents")
     logger.info("--- [Startup] Configuraciones de agentes cargadas. ---")
     if is_login_required():
-        logger.info("--- [Startup] Login activo (usuarios en env o en data/users.json). ---")
+        if _ENV_LOGIN_USER:
+            logger.info("--- [Startup] Login activo. Usuario env: '%s' (y/o data/users.json). ---", _ENV_LOGIN_USER)
+        else:
+            logger.info("--- [Startup] Login activo (usuarios en data/users.json). ---")
     else:
         logger.info("--- [Startup] Login no configurado: /invoke es público. ---")
 

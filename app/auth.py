@@ -88,6 +88,8 @@ def is_login_required() -> bool:
 
 
 def verify_user(username: str, password: str) -> bool:
+    username = (username or "").strip()
+    password = (password or "").strip()
     # Usuario de env
     if LOGIN_USER and username == LOGIN_USER:
         if _LOGIN_PASSWORD_HASH:

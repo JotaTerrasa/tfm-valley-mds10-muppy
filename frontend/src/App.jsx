@@ -86,6 +86,10 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem(AUTH_TOKEN_KEY)
     setToken(null)
+    setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+    setMessages([])
+    setConnectionStatus('checking')
+    bootstrappedSessionsRef.current.clear()
   }
 
   const handleUnauthorized = () => {
@@ -94,7 +98,7 @@ function App() {
 
   // Mostrar login si el backend lo exige y no hay token
   if (authRequired === true && !token) {
-    return <Login onSuccess={handleLoginSuccess} />
+    return <Login key="login" onSuccess={handleLoginSuccess} />
   }
 
   // Cargando estado de auth (solo un instante)
@@ -337,7 +341,7 @@ function App() {
   }
 
   return (
-    <div className="app-container">
+    <div key={token || 'chat'} className="app-container">
       {/* Header */}
       <header className="chat-header">
         <div className="header-left">
