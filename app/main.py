@@ -3,7 +3,8 @@ import json
 import time
 import os
 from dotenv import load_dotenv
-from fastapi import Request, FastAPI, HTTPException, BackgroundTasks
+from fastapi import Request, FastAPI, HTTPException, BackgroundTasks, Depends, Header
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +18,13 @@ import logging
 from app.core.agent_factory import get_agent_orchestrator, memory_cache
 from app.components.memory.memory_factory import get_memory_for_agent
 from app.core.config_manager import DEFAULT_AGENT_KEY
+from app.auth import (
+    is_login_required,
+    verify_user,
+    create_access_token,
+    get_current_user_optional,
+    register_user,
+)
 
 load_dotenv()
 app = FastAPI(title="Plataforma de Agentes de IA - Mapfre Seguros")
@@ -30,10 +38,29 @@ session_store: Dict[str, dict] = {}
 def startup_event():
     load_all_agent_configs("agents")
     logger.info("--- [Startup] Configuraciones de agentes cargadas. ---")
+    if is_login_required():
+        logger.info("--- [Startup] Login activo (usuarios en env o en data/users.json). ---")
+    else:
+        logger.info("--- [Startup] Login no configurado: /invoke es público. ---")
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 API_KEY_SECRET = os.getenv("API_KEY_SECRET")
+REGISTER_SECRET = os.getenv("REGISTER_SECRET", API_KEY_SECRET)
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+def require_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")):
+    """Exige cabecera X-Admin-Key para registrar usuarios."""
+    if not REGISTER_SECRET:
+        raise HTTPException(status_code=503, detail="Registro no configurado (REGISTER_SECRET o API_KEY_SECRET)")
+    if x_admin_key != REGISTER_SECRET:
+        raise HTTPException(status_code=403, detail="Clave de administrador incorrecta")
+
 
 class InvokeRequest(BaseModel):
     input: str
@@ -50,8 +77,44 @@ class InvokeResponse(BaseModel):
     raw_agent_response: Optional[str] = None 
     request_cost: Optional[float] = None 
 
+
+@app.get("/auth/required")
+async def auth_required():
+    """Indica si el backend exige login para usar el chat. El frontend lo usa para mostrar o no la pantalla de login."""
+    return {"login_required": is_login_required()}
+
+
+@app.post("/auth/login")
+async def login(form: OAuth2PasswordRequestForm = Depends()):
+    """Login con usuario y contraseña. Devuelve un token JWT."""
+    if not verify_user(form.username, form.password):
+        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+    token = create_access_token(subject=form.username)
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/auth/register")
+async def register(
+    body: RegisterRequest,
+    _: None = Depends(require_admin_key),
+):
+    """
+    Registra un nuevo usuario (solo con clave de admin).
+    Cabecera: X-Admin-Key: <API_KEY_SECRET o REGISTER_SECRET>
+    """
+    try:
+        register_user(body.username, body.password)
+        return {"message": f"Usuario '{body.username}' registrado correctamente"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/invoke")
-async def invoke_agent(request: InvokeRequest, background_tasks: BackgroundTasks):
+async def invoke_agent(
+    request: InvokeRequest,
+    background_tasks: BackgroundTasks,
+    _user: Optional[str] = Depends(get_current_user_optional),
+):
     start_time = time.time()
     
     try:

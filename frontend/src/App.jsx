@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import './App.css'
+import Login from './Login.jsx'
+
+const AUTH_TOKEN_KEY = 'muppy_token'
 
 // Iconos SVG inline para no necesitar dependencias extra
 const SendIcon = () => (
@@ -40,12 +43,18 @@ const API_URL = rawApiUrl.startsWith('http://') || rawApiUrl.startsWith('https:/
   : `https://${rawApiUrl.replace(/^\/*/, '')}`
 
 // Header para ngrok (plan gratuito): evita la página intersticial y deja pasar la petición al backend
-const API_HEADERS = {
-  'Content-Type': 'application/json',
-  'ngrok-skip-browser-warning': 'true',
+function getApiHeaders(token) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+  }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return headers
 }
 
 function App() {
+  const [authRequired, setAuthRequired] = useState(null)
+  const [token, setToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY))
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -56,6 +65,48 @@ function App() {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const bootstrappedSessionsRef = useRef(new Set())
+
+  const API_HEADERS = getApiHeaders(token)
+
+  // Saber si el backend exige login
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_URL}/auth/required`, { headers: { 'ngrok-skip-browser-warning': 'true' } })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled) setAuthRequired(data.login_required === true) })
+      .catch(() => { if (!cancelled) setAuthRequired(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  const handleLoginSuccess = (newToken) => {
+    localStorage.setItem(AUTH_TOKEN_KEY, newToken)
+    setToken(newToken)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    setToken(null)
+  }
+
+  const handleUnauthorized = () => {
+    handleLogout()
+  }
+
+  // Mostrar login si el backend lo exige y no hay token
+  if (authRequired === true && !token) {
+    return <Login onSuccess={handleLoginSuccess} />
+  }
+
+  // Cargando estado de auth (solo un instante)
+  if (authRequired === null && !token) {
+    return (
+      <div className="app-container login-page">
+        <div className="login-card">
+          <p>Cargando...</p>
+        </div>
+      </div>
+    )
+  }
 
   // Auto-scroll al último mensaje
   const scrollToBottom = () => {
@@ -71,6 +122,10 @@ function App() {
     const checkConnection = async () => {
       try {
         const response = await fetch(`${API_URL}/health`, { headers: API_HEADERS })
+        if (response.status === 401) {
+          handleUnauthorized()
+          return
+        }
         if (response.ok) {
           setConnectionStatus('connected')
         } else {
@@ -83,7 +138,7 @@ function App() {
     checkConnection()
     const interval = setInterval(checkConnection, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [token])
 
   // Auto-inicio: el triage “empieza a escribir” al abrir chat o al reiniciar
   useEffect(() => {
@@ -109,6 +164,10 @@ function App() {
           }),
         })
 
+        if (response.status === 401) {
+          handleUnauthorized()
+          return
+        }
         if (!response.ok) {
           const errBody = await response.json().catch(() => ({}))
           const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
@@ -133,6 +192,10 @@ function App() {
 
         setMessages([botMessage])
       } catch (error) {
+        if (error.message === 'Requiere autenticación' || error.message?.includes('Token')) {
+          handleUnauthorized()
+          return
+        }
         console.error('Error:', error)
         const message = error.message || 'Error desconocido'
         setMessages([
@@ -198,6 +261,10 @@ function App() {
         })
       })
 
+      if (response.status === 401) {
+        handleUnauthorized()
+        return
+      }
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}))
         const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
@@ -223,6 +290,10 @@ function App() {
       setMessages(prev => [...prev, botMessage])
 
     } catch (error) {
+      if (error.message === 'Requiere autenticación' || error.message?.includes('Token')) {
+        handleUnauthorized()
+        return
+      }
       console.error('Error:', error)
       const message = error.message || 'Error desconocido'
       const errorMessage = {
@@ -297,6 +368,11 @@ function App() {
             <NewChatIcon />
             <span>Nueva conversación</span>
           </button>
+          {authRequired && token && (
+            <button type="button" className="logout-btn" onClick={handleLogout} title="Cerrar sesión">
+              Cerrar sesión
+            </button>
+          )}
         </div>
       </header>
 

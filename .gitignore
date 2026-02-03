@@ -52,3 +52,6 @@ htmlcov/
 
 # RAG / Vector Database (generated)
 chroma_db/
+
+# Usuarios registrados (hashes de contraseñas)
+data/users.json

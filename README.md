@@ -222,6 +222,20 @@ Edita `.env` y rellena al menos:
 | `GOOGLE_API_KEY` | **Sí** | API key de Google AI Studio (Gemini). Crear en: https://aistudio.google.com/app/apikey |
 | `API_KEY_SECRET` | No | Clave para proteger la API (si se usa en el código) |
 | `OLLAMA_BASE_URL` | No | URL de Ollama para el RAG (embeddings). Por defecto `http://localhost:11434`. Solo necesaria si Ollama está en otro host/puerto. |
+| `LOGIN_USER` / `LOGIN_PASSWORD` | No | Si los defines, el chat (frontend) exigirá usuario y contraseña; `/invoke` solo aceptará peticiones con un JWT válido (obtenido con `POST /auth/login`). Opcional: `JWT_SECRET_KEY` para firmar los tokens. Los usuarios también se pueden registrar en `data/users.json` (ver abajo). |
+
+**Registrar usuarios:** Puedes dar de alta usuarios de dos formas:
+
+1. **Por consola** (desde la raíz del proyecto, venv activado):
+   ```bash
+   python -m app.auth add_user mi_usuario
+   # Te pedirá la contraseña por consola (no se muestra al escribir)
+   ```
+   O con contraseña en la línea de comandos: `python -m app.auth add_user mi_usuario mi_contraseña`
+
+2. **Por API** (para scripts o integraciones): `POST /auth/register` con body `{"username": "...", "password": "..."}` y cabecera **`X-Admin-Key: <API_KEY_SECRET o REGISTER_SECRET>`**. Si no defines `API_KEY_SECRET` ni `REGISTER_SECRET`, el registro por API no estará disponible.
+
+Los usuarios se guardan en **`data/users.json`** (archivo en `.gitignore`). El usuario definido en `LOGIN_USER` (env) no se puede sobrescribir desde el archivo.
 
 Ejemplo mínimo de `.env` en la raíz:
 
