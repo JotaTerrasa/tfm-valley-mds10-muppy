@@ -281,6 +281,17 @@ Abre en el navegador la URL que muestre Vite (normalmente `http://localhost:5173
 | Raíz del proyecto | `source venv/bin/activate` → `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` |
 | `frontend/` | `npm run dev` |
 
+### 5.1. Frontend en Vercel con backend local (ngrok)
+
+Si despliegas el frontend en **Vercel** pero el backend sigue en tu máquina, puedes exponerlo con **ngrok**:
+
+1. **Backend** en local: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+2. **Túnel ngrok** (dominio fijo o temporal): `ngrok http 8000 --domain=tu-dominio.ngrok-free.app`
+3. En **Vercel** → proyecto del frontend → **Settings** → **Environment Variables**: añade `VITE_API_URL` = `https://tu-dominio.ngrok-free.app`
+4. **Redeploy** el frontend para que el build use la nueva URL.
+
+El frontend ya envía la cabecera `ngrok-skip-browser-warning: true` en las peticiones para evitar la página intersticial de ngrok. Mientras ngrok y el backend estén activos, el chat en Vercel hablará con tu backend local.
+
 ### 6. Problemas frecuentes
 
 - **Puerto 8000 ocupado**: Mata procesos con `lsof -ti :8000 | xargs kill -9` (Linux/macOS) o levanta el backend en otro puerto, p. ej. `--port 8001`, y pon en `frontend/.env` `VITE_API_URL=http://localhost:8001`.
@@ -309,7 +320,7 @@ El sistema incluye un **RAG** (Retrieval-Augmented Generation) para que los agen
 1. **Documentos**: Los Markdown de `data/` (p. ej. `data/seguro_coche/`, `data/seguro_hogar/`, `data/seguro_moto/`) se cargan con metadatos (`insurance_type`, `product`, `doc_type`).
 2. **Fragmentación**: Se trocean con `RecursiveCharacterTextSplitter` (chunk 500, overlap 100) optimizado para títulos Markdown.
 3. **Embeddings**: Cada fragmento se convierte en vector con **Ollama** y el modelo **mxbai-embed-large**.
-4. **Almacenamiento**: Los vectores se guardan en **ChromaDB** (carpeta `chroma_db/`).
+4. **Almacenamiento**: Los vectores se guardan en **ChromaDB** (carpeta `chroma_db/`). Esta carpeta se genera localmente al hacer `rebuild` y está en `.gitignore`; cada desarrollador o entorno debe crear su propio índice.
 5. **Búsqueda**: Los agentes usan la herramienta `search_insurance_info` para hacer búsqueda semántica (y opcionalmente filtrar por tipo de seguro, producto o tipo de documento).
 
 Si **Ollama no está instalado o no está corriendo**, el chat seguirá funcionando, pero las llamadas a `search_insurance_info` fallarán cuando un agente intente consultar la base de conocimientos.
@@ -370,6 +381,10 @@ En `requirements.txt` están ya incluidas: `chromadb`, `langchain-chroma`, `lang
 
 - **"Connection refused" o error al hacer rebuild/search**: Comprueba que Ollama esté en marcha (`ollama serve` si no arranca solo) y que el modelo esté descargado (`ollama pull mxbai-embed-large`).
 - **Ollama en otra máquina o puerto**: Pon en el `.env` de la raíz `OLLAMA_BASE_URL=http://IP:11434` (o la URL que uses).
+
+#### Validación de datos (DNI/NIF/NIE)
+
+En el **Contract Agent**, los datos de lead (nombre, DNI/NIF/NIE, etc.) se validan con un validador español en `app/utils/dni_nif.py`: algoritmo oficial módulo 23, normalización de espacios/guiones y soporte para DNI, NIF de empresa y NIE. Los esquemas estructurados en `app/schemas/structured_outputs.py` usan esta validación para rechazar documentos inválidos.
 
 ---
 
@@ -1048,7 +1063,7 @@ Cada agente se define con un archivo JSON:
 
 - **`app/main.py`**: El "cerebro" principal que recibe peticiones
 - **`agents/*/config.json`**: Configuración de cada agente especializado
-- **`app/tools/insurance_tools.py`**: Funciones específicas de seguros
+- **`app/tools/insurance_tools.py`**: Funciones específicas de seguros. `calculate_quote` acepta `additional_data` en JSON y normaliza claves (p. ej. `car_year`/`año_vehiculo`, `birth_date`/`fecha_nacimiento`) y varios formatos de fecha; si el RAG está disponible, obtiene las coberturas de la base de conocimientos.
 - **`requirements.txt`**: Lista de librerías necesarias
 
 ### Flujo típico de desarrollo

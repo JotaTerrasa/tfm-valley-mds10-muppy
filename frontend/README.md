@@ -122,7 +122,29 @@ npm run lint      # Linter
 
 - El auto‑inicio llama a `/invoke` con `input: "Hola"`. Si el backend está caído, verás un mensaje de error.
 
-## 📦 Deploy (opción simple)
+## 📦 Deploy en Vercel (mismo repo, solo esta carpeta)
+
+Puedes desplegar **solo el frontend** desde este mismo repositorio:
+
+1. En [vercel.com](https://vercel.com) → **Add New** → **Project** → elige este repo.
+2. En **Root Directory** pon: **`frontend`** (así Vercel usa solo esta carpeta y no el backend).
+3. Añade la variable **`VITE_API_URL`** con la URL pública de tu backend.
+4. **Deploy**.
+
+Vercel tirará del repo pero construirá y desplegará únicamente lo que hay en `frontend/`. El `vercel.json` de esta carpeta ya está configurado para Vite.
+
+### Frontend en Vercel con backend local (ngrok)
+
+Si el backend corre en tu máquina y lo expones con **ngrok**:
+
+1. Levanta el backend: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` (desde la raíz del proyecto).
+2. Crea el túnel: `ngrok http 8000 --domain=tu-dominio.ngrok-free.app` (o sin `--domain` si usas URL temporal).
+3. En Vercel → **Settings** → **Environment Variables**: define `VITE_API_URL` = la URL de ngrok (ej. `https://tu-dominio.ngrok-free.app`).
+4. Redeploy el frontend.
+
+El frontend envía la cabecera `ngrok-skip-browser-warning: true` en todas las peticiones al backend para evitar la página de aviso de ngrok. Mientras ngrok y el backend estén en marcha, el chat desplegado en Vercel usará tu backend local.
+
+## 📦 Build local (opción simple)
 
 Genera el build:
 
@@ -130,7 +152,7 @@ Genera el build:
 npm run build
 ```
 
-El output queda en `dist/`. Puedes servirlo con cualquier hosting estático (Nginx, GitHub Pages, Vercel, etc.).  
+El output queda en `dist/`. Puedes servirlo con cualquier hosting estático (Nginx, GitHub Pages, etc.).  
 Si despliegas el frontend, configura **`VITE_API_URL`** en el entorno de build para apuntar al backend desplegado.
 
 ## 🔒 Seguridad

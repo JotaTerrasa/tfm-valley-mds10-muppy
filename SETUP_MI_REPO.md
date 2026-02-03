@@ -4,7 +4,7 @@
 
 ## Sincronización automática con el repo de Sergio
 
-En este repo hay un **GitHub Action** (`.github/workflows/sync-upstream.yml`) que:
+En este repo hay un **GitHub Action** (archivo `.github/workflows/sync-upstream.yml`) que:
 
 - **Cada hora** copia todas las ramas de `ssillerom/tfm-valley-mds10-muppy` a tu repo.
 - También puedes lanzarlo **a mano**: en GitHub → pestaña **Actions** → "Sync from Sergio (upstream)" → **Run workflow**.

@@ -35,6 +35,12 @@ const NewChatIcon = () => (
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Header para ngrok (plan gratuito): evita la página intersticial y deja pasar la petición al backend
+const API_HEADERS = {
+  'Content-Type': 'application/json',
+  'ngrok-skip-browser-warning': 'true',
+}
+
 function App() {
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
@@ -60,7 +66,7 @@ function App() {
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        const response = await fetch(`${API_URL}/health`)
+        const response = await fetch(`${API_URL}/health`, { headers: API_HEADERS })
         if (response.ok) {
           setConnectionStatus('connected')
         } else {
@@ -88,9 +94,7 @@ function App() {
       try {
         const response = await fetch(`${API_URL}/invoke`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: API_HEADERS,
           body: JSON.stringify({
             input: 'Hola',
             session_id: sessionId,
@@ -180,9 +184,7 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/invoke`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: API_HEADERS,
         body: JSON.stringify({
           input: userMessage.text,
           session_id: sessionId,
