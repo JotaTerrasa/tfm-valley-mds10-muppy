@@ -78,6 +78,116 @@ function App() {
     return () => { cancelled = true }
   }, [])
 
+  // Auto-scroll al último mensaje (siempre mismo número de hooks)
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  // Verificar conexión con el backend
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const response = await fetch(`${API_URL}/health`, { headers: API_HEADERS })
+        if (response.status === 401) {
+          clearSessionAndGoToLogin()
+          return
+        }
+        if (response.ok) {
+          setConnectionStatus('connected')
+        } else {
+          setConnectionStatus('error')
+        }
+      } catch (error) {
+        setConnectionStatus('error')
+      }
+    }
+    if (token != null) {
+      checkConnection()
+      const interval = setInterval(checkConnection, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [token])
+
+  // Auto-inicio: el triage “empieza a escribir” al abrir chat o al reiniciar
+  useEffect(() => {
+    if (connectionStatus !== 'connected') return
+    if (bootstrappedSessionsRef.current.has(sessionId)) return
+
+    bootstrappedSessionsRef.current.add(sessionId)
+
+    const autoStart = async () => {
+      if (isLoading) return
+      setIsLoading(true)
+      try {
+        const response = await fetch(`${API_URL}/invoke`, {
+          method: 'POST',
+          headers: API_HEADERS,
+          body: JSON.stringify({
+            input: 'Hola',
+            session_id: sessionId,
+            metadata: {
+              source: 'web_frontend',
+              auto_start: true,
+            },
+          }),
+        })
+
+        if (response.status === 401) {
+          clearSessionAndGoToLogin()
+          return
+        }
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}))
+          const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
+          throw new Error(detail)
+        }
+        const data = await response.json()
+
+        if (data.structured_data?.active_agent_key) {
+          setActiveAgent(data.structured_data.active_agent_key)
+        } else {
+          setActiveAgent('triage_agent')
+        }
+
+        const botMessage = {
+          id: Date.now(),
+          type: 'bot',
+          text: data.response || 'Hola, ¿en qué puedo ayudarte?',
+          timestamp: new Date(),
+          agent: data.structured_data?.active_agent_key || 'triage_agent',
+          cost: data.request_cost,
+        }
+
+        setMessages([botMessage])
+      } catch (error) {
+        if (error.message === 'Requiere autenticación' || error.message?.includes('Token')) {
+          clearSessionAndGoToLogin()
+          return
+        }
+        console.error('Error:', error)
+        const message = error.message || 'Error desconocido'
+        setMessages([
+          {
+            id: Date.now(),
+            type: 'bot',
+            text: `❌ ${message}`,
+            timestamp: new Date(),
+            isError: true,
+          },
+        ])
+      } finally {
+        setIsLoading(false)
+        inputRef.current?.focus()
+      }
+    }
+
+    autoStart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, connectionStatus])
+
   const handleLoginSuccess = (newToken) => {
     localStorage.setItem(AUTH_TOKEN_KEY, newToken)
     window.location.reload()
@@ -114,114 +224,6 @@ function App() {
       </div>
     )
   }
-
-  // Auto-scroll al último mensaje
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  // Verificar conexión con el backend
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const response = await fetch(`${API_URL}/health`, { headers: API_HEADERS })
-        if (response.status === 401) {
-          handleUnauthorized()
-          return
-        }
-        if (response.ok) {
-          setConnectionStatus('connected')
-        } else {
-          setConnectionStatus('error')
-        }
-      } catch (error) {
-        setConnectionStatus('error')
-      }
-    }
-    checkConnection()
-    const interval = setInterval(checkConnection, 30000)
-    return () => clearInterval(interval)
-  }, [token])
-
-  // Auto-inicio: el triage “empieza a escribir” al abrir chat o al reiniciar
-  useEffect(() => {
-    if (connectionStatus !== 'connected') return
-    if (bootstrappedSessionsRef.current.has(sessionId)) return
-
-    bootstrappedSessionsRef.current.add(sessionId)
-
-    const autoStart = async () => {
-      if (isLoading) return
-      setIsLoading(true)
-      try {
-        const response = await fetch(`${API_URL}/invoke`, {
-          method: 'POST',
-          headers: API_HEADERS,
-          body: JSON.stringify({
-            input: 'Hola',
-            session_id: sessionId,
-            metadata: {
-              source: 'web_frontend',
-              auto_start: true,
-            },
-          }),
-        })
-
-        if (response.status === 401) {
-          handleUnauthorized()
-          return
-        }
-        if (!response.ok) {
-          const errBody = await response.json().catch(() => ({}))
-          const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
-          throw new Error(detail)
-        }
-        const data = await response.json()
-
-        if (data.structured_data?.active_agent_key) {
-          setActiveAgent(data.structured_data.active_agent_key)
-        } else {
-          setActiveAgent('triage_agent')
-        }
-
-        const botMessage = {
-          id: Date.now(),
-          type: 'bot',
-          text: data.response || 'Hola, ¿en qué puedo ayudarte?',
-          timestamp: new Date(),
-          agent: data.structured_data?.active_agent_key || 'triage_agent',
-          cost: data.request_cost,
-        }
-
-        setMessages([botMessage])
-      } catch (error) {
-        if (error.message === 'Requiere autenticación' || error.message?.includes('Token')) {
-          handleUnauthorized()
-          return
-        }
-        console.error('Error:', error)
-        const message = error.message || 'Error desconocido'
-        setMessages([
-          {
-            id: Date.now(),
-            type: 'bot',
-            text: `❌ ${message}`,
-            timestamp: new Date(),
-            isError: true,
-          },
-        ])
-      } finally {
-        setIsLoading(false)
-        inputRef.current?.focus()
-      }
-    }
-
-    autoStart()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, connectionStatus])
 
   // Formatear texto con markdown básico
   const formatMessage = (text) => {
