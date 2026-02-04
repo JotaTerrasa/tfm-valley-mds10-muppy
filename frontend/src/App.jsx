@@ -78,48 +78,10 @@ function App() {
     return () => { cancelled = true }
   }, [])
 
-  const handleLoginSuccess = (newToken) => {
-    localStorage.setItem(AUTH_TOKEN_KEY, newToken)
-    // Recarga para montar el chat con token y que los efectos (conexión, auto-inicio) se ejecuten
-    window.location.reload()
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-    setToken(null)
-    setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
-    setMessages([])
-    setConnectionStatus('checking')
-    bootstrappedSessionsRef.current.clear()
-    // Recarga para mostrar la pantalla de login
-    window.location.reload()
-  }
-
-  const handleUnauthorized = () => {
-    handleLogout()
-  }
-
-  // Mostrar login si el backend lo exige y no hay token
-  if (authRequired === true && !token) {
-    return <Login key="login" onSuccess={handleLoginSuccess} />
-  }
-
-  // Cargando estado de auth (solo un instante)
-  if (authRequired === null && !token) {
-    return (
-      <div className="app-container login-page">
-        <div className="login-card">
-          <p>Cargando...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Auto-scroll al último mensaje
+  // Auto-scroll al último mensaje (siempre mismo número de hooks)
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
-
   useEffect(() => {
     scrollToBottom()
   }, [messages])
@@ -223,6 +185,43 @@ function App() {
     autoStart()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, connectionStatus])
+
+  const handleLoginSuccess = (newToken) => {
+    localStorage.setItem(AUTH_TOKEN_KEY, newToken)
+    // Recarga para montar el chat con token y que los efectos (conexión, auto-inicio) se ejecuten
+    window.location.reload()
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    setToken(null)
+    setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+    setMessages([])
+    setConnectionStatus('checking')
+    bootstrappedSessionsRef.current.clear()
+    // Recarga para mostrar la pantalla de login
+    window.location.reload()
+  }
+
+  const handleUnauthorized = () => {
+    handleLogout()
+  }
+
+  // Mostrar login si el backend lo exige y no hay token
+  if (authRequired === true && !token) {
+    return <Login key="login" onSuccess={handleLoginSuccess} />
+  }
+
+  // Cargando estado de auth (solo un instante)
+  if (authRequired === null && !token) {
+    return (
+      <div className="app-container login-page">
+        <div className="login-card">
+          <p>Cargando...</p>
+        </div>
+      </div>
+    )
+  }
 
   // Formatear texto con markdown básico
   const formatMessage = (text) => {

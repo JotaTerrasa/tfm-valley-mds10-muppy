@@ -1,4 +1,3 @@
-from google.cloud import storage
 import re
 import os
 
@@ -9,6 +8,7 @@ def load_file_content(path: str) -> str:
 
     if path.startswith("gs://"):
         try:
+            from google.cloud import storage
             client = storage.Client()
             match = re.match(r"gs://([^/]+)/(.+)", path)
             if not match:
