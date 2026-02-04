@@ -400,6 +400,16 @@ En `requirements.txt` están ya incluidas: `chromadb`, `langchain-chroma`, `lang
 
 En el **Contract Agent**, los datos de lead (nombre, DNI/NIF/NIE, etc.) se validan con un validador español en `app/utils/dni_nif.py`: algoritmo oficial módulo 23, normalización de espacios/guiones y soporte para DNI, NIF de empresa y NIE. Los esquemas estructurados en `app/schemas/structured_outputs.py` usan esta validación para rechazar documentos inválidos.
 
+### 8. Evaluación y Arize Phoenix (tracing LangGraph)
+
+El proyecto incluye **tracing con Arize Phoenix** para observar las invocaciones de LangGraph (qué nodo se ejecuta, qué prompt se usa, latencia, etc.) y un **sistema de evaluación** que analiza los prompts de cada parte del grafo.
+
+1. **Dependencias** (ya en `requirements.txt`): `openinference-instrumentation-langchain`, `arize-phoenix-otel`.
+2. **Activar tracing**: en tu `.env` pon `PHOENIX_PROJECT_NAME=tfm-muppy-multiagent` (o `PHOENIX_ENABLED=true`). El backend registrará el tracer antes de cargar LangGraph; las invocaciones a `/invoke` quedarán trazadas en Phoenix.
+3. **Phoenix**: levanta Phoenix local o usa [Phoenix Cloud](https://docs.arize.com/phoenix/phoenix-cloud). Por defecto el tracer envía a `localhost:4317` (gRPC).
+4. **Catálogo de prompts**: ejecuta `python run_evaluation.py` para listar todos los prompts por agente y nodo del grafo. Con `--catalog-json` obtienes el catálogo en JSON (agente, nodo, ruta, texto del prompt, herramientas).
+5. **Muestras para trazas**: con el backend en marcha, `python run_evaluation.py --run-samples --samples 5` invoca el API con casos de prueba; en Phoenix podrás ver qué nodos y prompts se usaron en cada conversación.
+
 ---
 
 ## 🏗️ Arquitectura del Sistema

@@ -2,7 +2,24 @@ import uuid
 import json
 import time
 import os
+import logging
 from dotenv import load_dotenv
+
+load_dotenv()
+
+# Arize Phoenix (LangGraph exporter): registrar antes de importar LangChain/LangGraph.
+try:
+    if os.getenv("PHOENIX_PROJECT_NAME") or os.getenv("PHOENIX_ENABLED", "").lower() in ("1", "true", "yes"):
+        from phoenix.otel import register
+        register(
+            project_name=os.getenv("PHOENIX_PROJECT_NAME", "tfm-muppy-multiagent"),
+            auto_instrument=True,
+            batch=os.getenv("PHOENIX_BATCH", "true").lower() in ("1", "true", "yes"),
+        )
+except Exception as e:
+    import warnings
+    warnings.warn(f"Phoenix tracing no inicializado: {e}", UserWarning)
+
 from fastapi import Request, FastAPI, HTTPException, BackgroundTasks, Depends, Header
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -13,8 +30,6 @@ from langchain_classic.memory.chat_memory import BaseChatMemory
 
 from app.core.agent_orchestrator import AgentOrchestrator
 from app.core.config_manager import load_all_agent_configs, get_agent_config
-import logging
-
 from app.core.agent_factory import get_agent_orchestrator, memory_cache
 from app.components.memory.memory_factory import get_memory_for_agent
 from app.core.config_manager import DEFAULT_AGENT_KEY
@@ -27,7 +42,6 @@ from app.auth import (
 )
 from app.auth import LOGIN_USER as _ENV_LOGIN_USER
 
-load_dotenv()
 app = FastAPI(title="Plataforma de Agentes de IA - Mapfre Seguros")
 
 logger = logging.getLogger(__name__)

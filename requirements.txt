@@ -12,6 +12,8 @@ langchain-community
 langchain-google-genai
 langchain-openai
 langgraph
+openinference-instrumentation-langchain
+arize-phoenix-otel
 numpy
 python-dotenv
 python-stdnum

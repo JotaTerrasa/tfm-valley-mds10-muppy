@@ -78,7 +78,44 @@ function App() {
     return () => { cancelled = true }
   }, [])
 
-  // Auto-scroll al último mensaje (siempre mismo número de hooks)
+  const handleLoginSuccess = (newToken) => {
+    localStorage.setItem(AUTH_TOKEN_KEY, newToken)
+    window.location.reload()
+  }
+
+  const clearSessionAndGoToLogin = () => {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    setToken(null)
+    setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+    setMessages([])
+    setConnectionStatus('checking')
+    bootstrappedSessionsRef.current.clear()
+  }
+
+  const handleLogout = () => {
+    clearSessionAndGoToLogin()
+    window.location.reload()
+  }
+
+  const handleUnauthorized = () => {
+    clearSessionAndGoToLogin()
+  }
+
+  if (authRequired === true && !token) {
+    return <Login key="login" onSuccess={handleLoginSuccess} />
+  }
+
+  if (authRequired === null && !token) {
+    return (
+      <div className="app-container login-page">
+        <div className="login-card">
+          <p>Cargando...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Auto-scroll al último mensaje
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
