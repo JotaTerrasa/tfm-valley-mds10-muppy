@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import messages_to_dict
-from langchain.memory.chat_memory import BaseChatMemory
+from langchain_core.chat_history import BaseChatMessageHistory
 
 from app.core.agent_orchestrator import AgentOrchestrator
 from app.core.config_manager import load_all_agent_configs, get_agent_config

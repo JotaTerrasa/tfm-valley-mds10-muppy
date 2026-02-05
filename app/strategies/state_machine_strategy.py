@@ -199,7 +199,7 @@ class StateMachineStrategy():
         return handler
 
     def entry_point_router(self, state: GraphState) -> str:
-        """Enrutador genérico que lee su lógica desde la configuración."""
+        """Enrutador genérico con guardrail inteligente para validación según tipo de flujo."""
         routing_field = self.router_config.get("field", "route")
         routing_map = self.router_config.get("map", {})
         default_node = self.router_config.get("default_node")
@@ -207,10 +207,55 @@ class StateMachineStrategy():
         if not default_node:
             raise ValueError("El campo 'default_node' es obligatorio en la configuración del router.")
 
-        current_value = state.get("structured_data", {}).get(routing_field)
+        structured_data = state.get("structured_data", {})
+        current_value = structured_data.get(routing_field)
+        
+        # GUARDRAIL INTELIGENTE: Validación según tipo de flujo
+        next_agent = structured_data.get("next_agent")
+        intent = structured_data.get("intent")
+        cliente_id = structured_data.get("cliente_id")
+        tipo_seguro = structured_data.get("tipo_seguro")
+        datos_completos = structured_data.get("datos_completos", False)
+        requiere_cliente_id = structured_data.get("requiere_cliente_id", False)
+        
+        # Si el LLM intenta derivar a otro agente, validar según el flujo
+        if next_agent and next_agent != "null" and next_agent != default_node:
+            
+            # FLUJO 1: Cotizar/Contratar - Solo requiere tipo_seguro
+            if intent in ["cotizar", "contratar"]:
+                if not tipo_seguro:
+                    print(f"--- [GUARDRAIL] BLOQUEO: Intento de derivar a '{next_agent}' sin tipo_seguro. ---")
+                    print(f"    Intent: {intent}, tipo_seguro: {tipo_seguro}")
+                    
+                    # Forzar regreso a triage
+                    state["structured_data"]["next_agent"] = None
+                    state["structured_data"]["route"] = "triage"
+                    state["structured_data"]["datos_completos"] = False
+                    
+                    return default_node
+            
+            # FLUJO 2: Soporte - Requiere cliente_id + tipo_seguro
+            elif intent == "soporte" or requiere_cliente_id:
+                if not cliente_id or not tipo_seguro:
+                    print(f"--- [GUARDRAIL] BLOQUEO: Intento de derivar a soporte sin datos completos. ---")
+                    print(f"    cliente_id: {cliente_id}, tipo_seguro: {tipo_seguro}, requiere_cliente_id: {requiere_cliente_id}")
+                    
+                    # Forzar regreso a triage
+                    state["structured_data"]["next_agent"] = None
+                    state["structured_data"]["route"] = "triage"
+                    state["structured_data"]["datos_completos"] = False
+                    
+                    return default_node
+        
         destination = routing_map.get(current_value, default_node)
-        print(f"--- [Router] Campo: '{routing_field}', Valor: '{current_value}'. Próximo nodo: '{destination}' ---")
-
+        print(f"--- [Router] Campo: '{routing_field}', Valor: '{current_value}', Intent: '{intent}'. Próximo nodo: '{destination}' ---")
+        
+        # Validación adicional: solo permitir salir de triage si datos_completos es true
+        if destination != default_node and current_value == "triage":
+            if not datos_completos:
+                print(f"--- [GUARDRAIL] Datos incompletos (datos_completos=False). Forzando permanencia en triage. ---")
+                destination = default_node
+        
         return destination
 
     def _build_graph(self) -> StateGraph:

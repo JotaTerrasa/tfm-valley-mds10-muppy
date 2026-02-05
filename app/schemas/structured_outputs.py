@@ -130,6 +130,13 @@ class AgentState(BaseModel):
     route: Optional[str] = None
     intent: Optional[str] = None  # "cotizar", "contratar", "consultar", "soporte"
     insurance_type: Optional[str] = None  # "auto", "hogar", "vida", "salud"
+    
+    # Campos obligatorios para el sistema de bloqueo del Triage
+    cliente_id: Optional[str] = None  # DNI, NIE, nombre completo o ID del cliente
+    tipo_seguro: Optional[str] = None  # "auto", "moto", "hogar", "vida", "salud"
+    datos_completos: bool = False  # True si tiene los datos necesarios según intent
+    requiere_cliente_id: bool = False  # True si intent="soporte", False si intent="cotizar"/"contratar"
+    
     collected_data: PartialCollectedData = Field(default_factory=PartialCollectedData)
     pending_field: Optional[str] = None
     invalid_reason: Optional[str] = None

@@ -75,74 +75,25 @@ function App() {
     return () => clearInterval(interval)
   }, [])
 
-  // Auto-inicio: el triage “empieza a escribir” al abrir chat o al reiniciar
+  // Mensaje de bienvenida hardcodeado (sin llamada al LLM)
   useEffect(() => {
     if (connectionStatus !== 'connected') return
     if (bootstrappedSessionsRef.current.has(sessionId)) return
 
     bootstrappedSessionsRef.current.add(sessionId)
 
-    const autoStart = async () => {
-      if (isLoading) return
-      setIsLoading(true)
-      try {
-        const response = await fetch(`${API_URL}/invoke`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            input: 'Hola',
-            session_id: sessionId,
-            metadata: {
-              source: 'web_frontend',
-              auto_start: true,
-            },
-          }),
-        })
-
-        if (!response.ok) {
-          const errBody = await response.json().catch(() => ({}))
-          const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
-          throw new Error(detail)
-        }
-        const data = await response.json()
-
-        if (data.structured_data?.active_agent_key) {
-          setActiveAgent(data.structured_data.active_agent_key)
-        } else {
-          setActiveAgent('triage_agent')
-        }
-
-        const botMessage = {
-          id: Date.now(),
-          type: 'bot',
-          text: data.response || 'Hola, ¿en qué puedo ayudarte?',
-          timestamp: new Date(),
-          agent: data.structured_data?.active_agent_key || 'triage_agent',
-          cost: data.request_cost,
-        }
-
-        setMessages([botMessage])
-      } catch (error) {
-        console.error('Error:', error)
-        const message = error.message || 'Error desconocido'
-        setMessages([
-          {
-            id: Date.now(),
-            type: 'bot',
-            text: `❌ ${message}`,
-            timestamp: new Date(),
-            isError: true,
-          },
-        ])
-      } finally {
-        setIsLoading(false)
-        inputRef.current?.focus()
-      }
+    // Insertar mensaje de bienvenida estático directamente
+    const welcomeMessage = {
+      id: Date.now(),
+      type: 'bot',
+      text: '¡Hola! Soy tu asistente de seguros Mapfre. ¿En qué puedo ayudarte hoy?',
+      timestamp: new Date(),
+      agent: 'triage_agent',
+      cost: 0,
     }
 
-    autoStart()
+    setMessages([welcomeMessage])
+    inputRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, connectionStatus])
 

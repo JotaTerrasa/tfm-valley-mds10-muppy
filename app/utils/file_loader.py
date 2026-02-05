@@ -1,6 +1,13 @@
-from google.cloud import storage
 import re
 import os
+
+# Importación opcional de Google Cloud Storage
+try:
+    from google.cloud import storage
+    GCS_AVAILABLE = True
+except ImportError:
+    GCS_AVAILABLE = False
+    storage = None
 
 def load_file_content(path: str) -> str:
     """Carga el contenido de un fichero desde una ruta local o GCS."""
@@ -8,6 +15,8 @@ def load_file_content(path: str) -> str:
     print(f"--- [File Loader] Cargando fichero desde: {path} ---")
 
     if path.startswith("gs://"):
+        if not GCS_AVAILABLE:
+            raise ImportError("Google Cloud Storage no está disponible. Instala google-cloud-storage.")
         try:
             client = storage.Client()
             match = re.match(r"gs://([^/]+)/(.+)", path)

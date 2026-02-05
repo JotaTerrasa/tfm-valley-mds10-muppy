@@ -1,11 +1,11 @@
 import logging
-from typing import Dict
+from typing import Dict, Any
 from fastapi import HTTPException
-from langchain.memory.chat_memory import BaseChatMemory
+from langchain_core.chat_history import BaseChatMessageHistory
 from app.core.agent_orchestrator import AgentOrchestrator
 
 agent_cache: Dict[str, AgentOrchestrator] = {}
-memory_cache: Dict[str, BaseChatMemory] = {}
+memory_cache: Dict[str, Any] = {}
 
 logger = logging.getLogger(__name__)
 
