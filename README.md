@@ -304,6 +304,8 @@ Abre en el navegador la URL que muestre Vite (normalmente `http://localhost:5173
 
 **Levantar backend o stress test:** todos los scripts están en `scripts/`. Comandos rápidos (para Cursor o para ti): [docs/COMANDOS_RAPIDOS.md](docs/COMANDOS_RAPIDOS.md).
 
+**Máquina de referencia (backend):** La misma sobre la que corre el backend en desarrollo: GPU **RTX 4090**, **128 GB RAM DDR4**, CPU **AMD Ryzen 9 5900XT**, placa base **MSI MPG B550 GAMING PLUS**.
+
 ```
 ├── app/                    # Backend FastAPI (agentes, estrategias, herramientas)
 ├── agents/                 # Configuración y prompts por agente (triage, quote, contract, support)
@@ -364,17 +366,17 @@ El sistema incluye un **RAG** (Retrieval-Augmented Generation) para que los agen
    - Tras instalar, Ollama suele arrancar solo y exponer la API en `http://localhost:11434`. Si no, ejecuta: `ollama serve`.
 
 2. **Modelo de embeddings**  
-   - Usamos **mxbai-embed-large** ([ollama.com/library/mxbai-embed-large](https://ollama.com/library/mxbai-embed-large)), de mixedbread.ai.  
-   - Descargar el modelo en Ollama:
+   - Por defecto usamos **nomic-embed-text** ([ollama.com/library/nomic-embed-text](https://ollama.com/library/nomic-embed-text)): más rápido, latencia muy baja en GPU. Alternativa para máxima calidad: **mxbai-embed-large** (definir `OLLAMA_EMBEDDING_MODEL=mxbai-embed-large` en `.env` y reconstruir el índice).  
+   - Descargar el modelo por defecto en Ollama:
    ```bash
-   ollama pull mxbai-embed-large
+   ollama pull nomic-embed-text
    ```
 
 #### Cómo funciona el RAG
 
 1. **Documentos**: Los Markdown de `data/` (p. ej. `data/seguro_coche/`, `data/seguro_hogar/`, `data/seguro_moto/`) se cargan con metadatos (`insurance_type`, `product`, `doc_type`).
-2. **Fragmentación**: Se trocean con `RecursiveCharacterTextSplitter` (chunk 500, overlap 100) optimizado para títulos Markdown.
-3. **Embeddings**: Cada fragmento se convierte en vector con **Ollama** y el modelo **mxbai-embed-large**.
+2. **Fragmentación**: Se trocean con `RecursiveCharacterTextSplitter` (chunk y overlap configurables vía `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`).
+3. **Embeddings**: Cada fragmento se convierte en vector con **Ollama** (modelo por defecto **nomic-embed-text**, configurable con `OLLAMA_EMBEDDING_MODEL`; opcional `mxbai-embed-large` para mayor calidad).
 4. **Almacenamiento**: Los vectores se guardan en **ChromaDB** (carpeta `chroma_db/`). Esta carpeta se genera localmente al hacer `rebuild` y está en `.gitignore`; cada desarrollador o entorno debe crear su propio índice.
 5. **Búsqueda**: Los agentes usan la herramienta `search_insurance_info` para hacer búsqueda semántica (y opcionalmente filtrar por tipo de seguro, producto o tipo de documento).
 
@@ -392,7 +394,7 @@ Cada cotización (`calculate_quote`) consulta **automáticamente** la base de co
    ```bash
    python -m app.rag.vector_store rebuild
    ```
-   Descarga el modelo de embeddings si hace falta: `ollama pull mxbai-embed-large`.
+   Descarga el modelo de embeddings si hace falta: `ollama pull nomic-embed-text` (o `mxbai-embed-large` si has puesto `OLLAMA_EMBEDDING_MODEL=mxbai-embed-large`).
 
 Cuando cotices y el RAG esté disponible, en el **terminal del backend** verás el mensaje: `--- [Insurance Tools] Cotización enriquecida con RAG (base de conocimientos) ---`. Si el RAG no está disponible (Ollama apagado, índice vacío, etc.), la cotización se devuelve igual y las coberturas salen de la lista interna del cálculo.
 
@@ -418,6 +420,18 @@ Probar una búsqueda:
 python -m app.rag.vector_store search "coberturas" coche
 ```
 
+#### Rendimiento del RAG (modelo de embeddings y latencia)
+
+El RAG está ajustado para **baja latencia** (p. ej. herramienta de cotización en segundos o subsegundos en la máquina de referencia):
+
+1. **Modelo por defecto: nomic-embed-text.** Más rápido que mxbai-embed-large; en la máquina de referencia (RTX 4090) las consultas RAG pasan de decenas de segundos a tiempos prácticamente instantáneos. Para priorizar calidad sobre velocidad: `OLLAMA_EMBEDDING_MODEL=mxbai-embed-large` en `.env` y `python -m app.rag.vector_store rebuild`.
+2. **Keep-alive en Ollama:** `OLLAMA_EMBED_KEEP_ALIVE=1800` (30 min) mantiene el modelo en VRAM y evita cold start entre consultas.
+3. **Cache de consultas:** las consultas idénticas reutilizan el embedding en memoria (hasta `RAG_EMBED_CACHE_SIZE` entradas, por defecto 200).
+4. **k=2 y chunks 650:** por defecto se devuelven 2 resultados y chunks de 650 caracteres (configurable con `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`; si cambias, reconstruye el índice con `python -m app.rag.vector_store rebuild`).
+5. **Ollama con GPU:** en la RTX 4090, Ollama usa la GPU por defecto para embeddings. Asegúrate de no tener `OLLAMA_GPU_LAYERS=0`.
+
+**Máquina de referencia (backend):** La misma sobre la que corre el backend en desarrollo tiene: **GPU RTX 4090**, **128 GB RAM DDR4**, **CPU AMD Ryzen 9 5900XT**, **placa base MSI MPG B550 GAMING PLUS**. Con esta configuración, nomic-embed-text + keep_alive + cache dan latencia RAG muy baja en las trazas (Arize).
+
 #### Variable de entorno opcional (Ollama)
 
 Si Ollama no corre en `http://localhost:11434`, define en el `.env` de la raíz:
@@ -434,7 +448,7 @@ En `requirements.txt` están ya incluidas: `chromadb`, `langchain-chroma`, `lang
 
 #### Problemas con el RAG
 
-- **"Connection refused" o error al hacer rebuild/search**: Comprueba que Ollama esté en marcha (`ollama serve` si no arranca solo) y que el modelo esté descargado (`ollama pull mxbai-embed-large`).
+- **"Connection refused" o error al hacer rebuild/search**: Comprueba que Ollama esté en marcha (`ollama serve` si no arranca solo) y que el modelo esté descargado (`ollama pull nomic-embed-text` o `mxbai-embed-large` según `OLLAMA_EMBEDDING_MODEL`).
 - **Ollama en otra máquina o puerto**: Pon en el `.env` de la raíz `OLLAMA_BASE_URL=http://IP:11434` (o la URL que uses).
 
 #### Validación de datos (DNI/NIF/NIE)
@@ -489,7 +503,7 @@ Antes de comenzar, asegúrate de tener instalado:
 - **Node.js 18+** y **npm**: Para el frontend (descarga en [nodejs.org](https://nodejs.org))
 - **Git**: Para clonar el repositorio
 - **Cuenta en Google AI Studio**: Para obtener la API key de Gemini (gratuita, en [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))
-- **Ollama** (opcional, solo para RAG): Para que los agentes consulten la base de conocimientos (`search_insurance_info`). Descarga en [ollama.com](https://ollama.com) y luego `ollama pull mxbai-embed-large`.
+- **Ollama** (opcional, solo para RAG): Para que los agentes consulten la base de conocimientos (`search_insurance_info`). Descarga en [ollama.com](https://ollama.com) y luego `ollama pull nomic-embed-text` (por defecto; o `mxbai-embed-large` si usas ese modelo).
 
 **Nota:** El proyecto no usa Redis; la memoria de conversaciones y el estado de sesión están en memoria dentro del proceso del backend.
 
@@ -1362,7 +1376,7 @@ tail -f logs/app.log | grep "quote_agent"
 ### 🐛 Sobre Errores Comunes
 
 **Error al usar RAG / search_insurance_info (connection refused, etc.)**
-> El RAG usa Ollama para embeddings. Asegúrate de que Ollama esté en marcha (`ollama serve` si no arranca solo) y de que el modelo esté descargado (`ollama pull mxbai-embed-large`). Si Ollama está en otro host/puerto, define `OLLAMA_BASE_URL` en el `.env` de la raíz.
+> El RAG usa Ollama para embeddings (por defecto `nomic-embed-text`). Asegúrate de que Ollama esté en marcha (`ollama serve` si no arranca solo) y de que el modelo esté descargado (`ollama pull nomic-embed-text`). Si Ollama está en otro host/puerto, define `OLLAMA_BASE_URL` en el `.env` de la raíz.
 
 **Error: "Agent not found"**
 > Verifica que el directorio del agente existe en `agents/` y tiene un `config.json` válido.

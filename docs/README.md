@@ -2,6 +2,8 @@
 
 Índice de la documentación en `docs/`.
 
+**Entorno de referencia (backend):** GPU RTX 4090, 128 GB RAM DDR4, CPU AMD Ryzen 9 5900XT, placa base MSI MPG B550 GAMING PLUS (la misma máquina sobre la que corre el backend en desarrollo).
+
 | Documento | Contenido |
 |-----------|-----------|
 | [**ARIZE_TRACING.md**](ARIZE_TRACING.md) | Conectar el backend a Arize AX (Tracing Projects): variables `.env`, endpoint EU, Phoenix opcional. |
