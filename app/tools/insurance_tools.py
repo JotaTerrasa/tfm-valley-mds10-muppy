@@ -78,6 +78,45 @@ def get_insurance_products(insurance_type: str) -> List[Dict[str, Any]]:
     
     return mock_products.get(insurance_type, [])
 
+def get_cross_sell_suggestions(primary_policy_type: str) -> List[Dict[str, Any]]:
+    """
+    Sugiere productos complementarios para ventas cruzadas según la póliza principal del cliente.
+    Estructura compatible con CrossSellOffer (Pydantic).
+
+    Args:
+        primary_policy_type: Tipo de póliza actual ("auto", "hogar", "moto", "vida", "salud")
+
+    Returns:
+        Lista de ofertas sugeridas con product_id, product_type, coverage_level, annual_premium, monthly_premium, reason
+    """
+    print(f"--- [Insurance Tools] Sugerencias cross-sell para póliza: {primary_policy_type} ---")
+
+    # Reglas de cross-sell: qué sugerir según la póliza principal
+    suggestions_map = {
+        "auto": [
+            {"product_id": "hogar_basico", "product_type": "hogar", "coverage_level": "básico", "annual_premium": 180.0, "monthly_premium": 15.0, "reason": "Protege tu hogar con un descuento por tener ya auto con Mapfre"},
+            {"product_id": "vida_basico", "product_type": "vida", "coverage_level": "básico", "annual_premium": 120.0, "monthly_premium": 10.0, "reason": "Protección para tu familia con condiciones preferentes"},
+        ],
+        "hogar": [
+            {"product_id": "auto_basico", "product_type": "auto", "coverage_level": "terceros", "annual_premium": 280.0, "monthly_premium": 23.33, "reason": "Descuento por tener hogar con nosotros"},
+            {"product_id": "vida_basico", "product_type": "vida", "coverage_level": "básico", "annual_premium": 120.0, "monthly_premium": 10.0, "reason": "Protección familiar complementaria"},
+        ],
+        "moto": [
+            {"product_id": "auto_basico", "product_type": "auto", "coverage_level": "terceros", "annual_premium": 280.0, "monthly_premium": 23.33, "reason": "Si tienes coche, descuento por multi-póliza"},
+            {"product_id": "hogar_basico", "product_type": "hogar", "coverage_level": "básico", "annual_premium": 180.0, "monthly_premium": 15.0, "reason": "Protección del hogar con ventaja por ser cliente"},
+        ],
+        "vida": [
+            {"product_id": "hogar_basico", "product_type": "hogar", "coverage_level": "básico", "annual_premium": 180.0, "monthly_premium": 15.0, "reason": "Complementa la protección de tu familia"},
+            {"product_id": "salud_basico", "product_type": "salud", "coverage_level": "básico", "annual_premium": 350.0, "monthly_premium": 29.17, "reason": "Cobertura de salud con condiciones preferentes"},
+        ],
+        "salud": [
+            {"product_id": "vida_basico", "product_type": "vida", "coverage_level": "básico", "annual_premium": 120.0, "monthly_premium": 10.0, "reason": "Protección adicional para tu familia"},
+        ],
+    }
+    primary = primary_policy_type.lower().strip()
+    return suggestions_map.get(primary, [])
+
+
 @tool
 def calculate_quote(insurance_type: str, coverage_level: str, additional_data: Any = None) -> Dict[str, Any]:
     """
