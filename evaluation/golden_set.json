@@ -1,0 +1,34 @@
+{
+  "description": "Golden set para detectar regresiones. Con --judge se usa LLM as a Judge en casos que tengan judge_criteria.",
+  "base_url": "http://localhost:8000",
+  "cases": [
+    {
+      "id": "triage_saludo",
+      "input": "Hola",
+      "expected_keywords": ["Mapfre", "ayudar"],
+      "description": "El triage debe saludar y ofrecer ayuda.",
+      "judge_criteria": [
+        {"name": "relevancia", "min_score": 4, "description": "La respuesta es relevante al saludo y ofrece ayuda."},
+        {"name": "cortesía", "min_score": 4, "description": "Tono cortés y profesional."}
+      ]
+    },
+    {
+      "id": "triage_quiero_seguro",
+      "input": "Quiero contratar un seguro",
+      "expected_keywords": ["seguro", "agente"],
+      "description": "Debe derivar a contratación y mencionar seguro."
+    },
+    {
+      "id": "triage_cotizacion",
+      "input": "Necesito una cotización de seguro de coche",
+      "expected_keywords": ["cotización", "coche"],
+      "description": "Debe mencionar cotizaciones o coche."
+    },
+    {
+      "id": "triage_soporte",
+      "input": "Tengo una urgencia con mi póliza",
+      "expected_keywords": ["soporte", "urgencia"],
+      "description": "Debe reconocer soporte y urgencia."
+    }
+  ]
+}

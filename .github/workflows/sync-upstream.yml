@@ -1,0 +1,33 @@
+# Sincroniza las ramas del repo de Sergio (upstream) con este repo.
+# Se ejecuta cada hora y también se puede lanzar a mano (Run workflow).
+name: Sync from Sergio (upstream)
+
+on:
+  schedule:
+    # Cada hora (en minuto 0)
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    # Permite ejecutar manualmente desde la pestaña Actions
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/ssillerom/tfm-valley-mds10-muppy.git || true
+          git fetch upstream
+
+      - name: Push each upstream branch to origin
+        run: |
+          for branch in $(git for-each-ref --format='%(refname:short)' refs/remotes/upstream/ | sed 's|^upstream/||'); do
+            [ "$branch" = "HEAD" ] && continue
+            echo "Syncing branch: $branch"
+            git push origin refs/remotes/upstream/$branch:refs/heads/$branch || true
+          done

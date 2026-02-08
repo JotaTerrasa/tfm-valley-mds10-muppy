@@ -1,0 +1,48 @@
+{
+  "agent_role": "agente_de_cross_sell_seguros",
+  "strategy": "state_machine",
+  "memory": {
+    "type": "buffer"
+  },
+  "llm_configurations": {
+    "default_model": "gemini-2.5-flash",
+    "models": {
+      "gemini-2.5-flash": {
+        "provider": "google",
+        "model": "gemini-2.5-flash",
+        "pricing": {
+          "input_per_million": 0.3,
+          "output_per_million": 2.5
+        }
+      }
+    }
+  },
+  "state_machine": {
+    "initial_state": {
+      "route": "cross_sell_discovery",
+      "status": "incomplete",
+      "intent": "cross_sell",
+      "collected_data": {},
+      "ready_for_commit": false,
+      "missing_fields": []
+    },
+    "router": {
+      "field": "route",
+      "default_node": "cross_sell_discovery_node",
+      "map": {
+        "cross_sell_discovery": "cross_sell_discovery_node",
+        "cross_sell_offer": "cross_sell_offer_node"
+      }
+    },
+    "nodes": {
+      "cross_sell_discovery_node": {
+        "prompt_path": "prompts/cross_sell_discovery.prompt",
+        "available_tools": ["get_insurance_products", "get_cross_sell_suggestions"]
+      },
+      "cross_sell_offer_node": {
+        "prompt_path": "prompts/cross_sell_offer.prompt",
+        "available_tools": ["get_insurance_products", "get_cross_sell_suggestions", "calculate_quote"]
+      }
+    }
+  }
+}

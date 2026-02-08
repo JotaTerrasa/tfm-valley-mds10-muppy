@@ -2,6 +2,7 @@
 Test script for the RAG (Retrieval-Augmented Generation) system.
 
 This script tests the search functionality of the insurance knowledge base.
+Ejecutar desde la raíz del proyecto: python tests/test_rag.py
 """
 import logging
 from app.rag.vector_store import search_insurance_info, search_knowledge, get_vector_store

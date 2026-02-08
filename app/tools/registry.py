@@ -20,6 +20,7 @@ def get_tool_by_name(tool_name: str):
     """
     from .insurance_tools import (
         get_insurance_products,
+        get_cross_sell_suggestions,
         calculate_quote,
         create_payment_link,
         save_insurance_lead,
@@ -34,6 +35,7 @@ def get_tool_by_name(tool_name: str):
     
     TOOL_REGISTRY = {
         "get_insurance_products": get_insurance_products,
+        "get_cross_sell_suggestions": get_cross_sell_suggestions,
         "calculate_quote": calculate_quote,
         "create_payment_link": create_payment_link,
         "save_insurance_lead": save_insurance_lead,

@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import './App.css'
+import Login from './Login.jsx'
+
+const AUTH_TOKEN_KEY = 'muppy_token'
 
 // Iconos SVG inline para no necesitar dependencias extra
 const SendIcon = () => (
@@ -33,9 +36,25 @@ const NewChatIcon = () => (
   </svg>
 )
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Asegurar URL absoluta (evita 404 cuando en Vercel falta https://)
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = rawApiUrl.startsWith('http://') || rawApiUrl.startsWith('https://')
+  ? rawApiUrl
+  : `https://${rawApiUrl.replace(/^\/*/, '')}`
+
+// Header para ngrok (plan gratuito): evita la página intersticial y deja pasar la petición al backend
+function getApiHeaders(token) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+  }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return headers
+}
 
 function App() {
+  const [authRequired, setAuthRequired] = useState(null)
+  const [token, setToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY))
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -47,11 +66,22 @@ function App() {
   const inputRef = useRef(null)
   const bootstrappedSessionsRef = useRef(new Set())
 
-  // Auto-scroll al último mensaje
+  const API_HEADERS = getApiHeaders(token)
+
+  // Saber si el backend exige login
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_URL}/auth/required`, { headers: { 'ngrok-skip-browser-warning': 'true' } })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled) setAuthRequired(data.login_required === true) })
+      .catch(() => { if (!cancelled) setAuthRequired(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Auto-scroll al último mensaje (siempre mismo número de hooks)
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
-
   useEffect(() => {
     scrollToBottom()
   }, [messages])
@@ -60,7 +90,11 @@ function App() {
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        const response = await fetch(`${API_URL}/health`)
+        const response = await fetch(`${API_URL}/health`, { headers: API_HEADERS })
+        if (response.status === 401) {
+          clearSessionAndGoToLogin()
+          return
+        }
         if (response.ok) {
           setConnectionStatus('connected')
         } else {
@@ -70,10 +104,12 @@ function App() {
         setConnectionStatus('error')
       }
     }
-    checkConnection()
-    const interval = setInterval(checkConnection, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    if (token != null) {
+      checkConnection()
+      const interval = setInterval(checkConnection, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [token])
 
   // Mensaje de bienvenida hardcodeado (sin llamada al LLM)
   useEffect(() => {
@@ -82,7 +118,7 @@ function App() {
 
     bootstrappedSessionsRef.current.add(sessionId)
 
-    // Insertar mensaje de bienvenida estático directamente
+    // Mensaje de bienvenida estático (sin llamada al LLM)
     const welcomeMessage = {
       id: Date.now(),
       type: 'bot',
@@ -96,6 +132,43 @@ function App() {
     inputRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, connectionStatus])
+
+  const handleLoginSuccess = (newToken) => {
+    localStorage.setItem(AUTH_TOKEN_KEY, newToken)
+    window.location.reload()
+  }
+
+  const clearSessionAndGoToLogin = () => {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    setToken(null)
+    setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+    setMessages([])
+    setConnectionStatus('checking')
+    bootstrappedSessionsRef.current.clear()
+  }
+
+  const handleLogout = () => {
+    clearSessionAndGoToLogin()
+    window.location.reload()
+  }
+
+  const handleUnauthorized = () => {
+    clearSessionAndGoToLogin()
+  }
+
+  if (authRequired === true && !token) {
+    return <Login key="login" onSuccess={handleLoginSuccess} />
+  }
+
+  if (authRequired === null && !token) {
+    return (
+      <div className="app-container login-page">
+        <div className="login-card">
+          <p>Cargando...</p>
+        </div>
+      </div>
+    )
+  }
 
   // Formatear texto con markdown básico
   const formatMessage = (text) => {
@@ -131,9 +204,7 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/invoke`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: API_HEADERS,
         body: JSON.stringify({
           input: userMessage.text,
           session_id: sessionId,
@@ -143,6 +214,10 @@ function App() {
         })
       })
 
+      if (response.status === 401) {
+        handleUnauthorized()
+        return
+      }
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}))
         const detail = Array.isArray(errBody.detail) ? errBody.detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (errBody.detail || response.statusText)
@@ -168,6 +243,10 @@ function App() {
       setMessages(prev => [...prev, botMessage])
 
     } catch (error) {
+      if (error.message === 'Requiere autenticación' || error.message?.includes('Token')) {
+        handleUnauthorized()
+        return
+      }
       console.error('Error:', error)
       const message = error.message || 'Error desconocido'
       const errorMessage = {
@@ -205,13 +284,14 @@ function App() {
       'triage_agent': '🎯 Asistente General',
       'quote_agent': '💰 Agente de Cotizaciones',
       'contract_agent': '📝 Agente de Contratación',
-      'support_agent': '🆘 Agente de Soporte'
+      'support_agent': '🆘 Agente de Soporte',
+      'cross_sell_agent': '🛒 Agente Ventas Cruzadas'
     }
     return agents[agentKey] || '🤖 Asistente'
   }
 
   return (
-    <div className="app-container">
+    <div key={token || 'chat'} className="app-container">
       {/* Header */}
       <header className="chat-header">
         <div className="header-left">
@@ -242,6 +322,11 @@ function App() {
             <NewChatIcon />
             <span>Nueva conversación</span>
           </button>
+          {authRequired && token && (
+            <button type="button" className="logout-btn" onClick={handleLogout} title="Cerrar sesión">
+              Cerrar sesión
+            </button>
+          )}
         </div>
       </header>
 

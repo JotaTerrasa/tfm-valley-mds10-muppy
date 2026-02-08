@@ -18,6 +18,7 @@ def load_file_content(path: str) -> str:
         if not GCS_AVAILABLE:
             raise ImportError("Google Cloud Storage no está disponible. Instala google-cloud-storage.")
         try:
+            from google.cloud import storage
             client = storage.Client()
             match = re.match(r"gs://([^/]+)/(.+)", path)
             if not match:

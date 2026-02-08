@@ -1,4 +1,7 @@
 fastapi
+pyjwt
+bcrypt
+python-multipart
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
@@ -9,6 +12,8 @@ langchain-community
 langchain-google-genai
 langchain-openai
 langgraph
+openinference-instrumentation-langchain
+arize-phoenix-otel
 numpy
 python-dotenv
 python-stdnum
@@ -23,3 +28,8 @@ chromadb
 langchain-chroma
 langchain-ollama
 langchain-text-splitters
+arize-otel
+openinference-instrumentation-langchain
+opentelemetry-sdk
+opentelemetry-exporter-otlp
+locust>=2.0,<3

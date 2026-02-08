@@ -29,6 +29,15 @@ class SelectedInsuranceProduct(BaseModel):
     price: float
     annual_premium: float
 
+class CrossSellOffer(BaseModel):
+    """Oferta sugerida para ventas cruzadas."""
+    product_id: str
+    product_type: str
+    coverage_level: Optional[str] = None
+    annual_premium: Optional[float] = None
+    monthly_premium: Optional[float] = None
+    reason: Optional[str] = None
+
 class PartialCollectedData(BaseModel):
     """Datos recopilados parcialmente durante la conversación."""
     first_name: Optional[str] = None
@@ -128,7 +137,7 @@ class AgentState(BaseModel):
     lang_lock: Optional[str] = None
     status: str = Field(pattern=r'^(incomplete|new)$')
     route: Optional[str] = None
-    intent: Optional[str] = None  # "cotizar", "contratar", "consultar", "soporte"
+    intent: Optional[str] = None  # "cotizar", "contratar", "consultar", "soporte", "cross_sell"
     insurance_type: Optional[str] = None  # "auto", "hogar", "vida", "salud"
     
     # Campos obligatorios para el sistema de bloqueo del Triage
@@ -147,3 +156,6 @@ class AgentState(BaseModel):
     payment_status: str = Field(pattern=r'^(pending|successful|failed)$', default='pending')
     user_profile: Optional[Dict[str, Any]] = None
     next_agent: Optional[str] = None  # Para transiciones entre agentes
+    primary_policy: Optional[Dict[str, Any]] = None
+    cross_sell_offers: List[CrossSellOffer] = Field(default_factory=list)
+    cross_sell_selected: Optional[CrossSellOffer] = None

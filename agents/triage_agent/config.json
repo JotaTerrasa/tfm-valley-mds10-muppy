@@ -28,7 +28,8 @@
         "triage": "triage_node",
         "cotizar": "quote_agent",
         "contratar": "contract_agent",
-        "soporte": "support_agent"
+        "soporte": "support_agent",
+        "cross_sell": "cross_sell_agent"
       }
     },
     "nodes": {

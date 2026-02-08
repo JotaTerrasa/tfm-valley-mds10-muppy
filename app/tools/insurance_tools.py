@@ -5,6 +5,7 @@ Estas son implementaciones placeholder que deben ser adaptadas según las necesi
 from typing import Dict, Any, List
 import json
 import re
+from langchain_core.tools import tool
 
 # Meses en español para parsear fechas tipo "14 de junio de 1999"
 _MESES_ES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
@@ -32,6 +33,7 @@ def _normalize_fecha_nacimiento(val: Any) -> str:
             return f"{y}-{mes:02d}-{int(d):02d}"
     return s
 
+@tool
 def get_insurance_products(insurance_type: str) -> List[Dict[str, Any]]:
     """
     Obtiene los productos de seguro disponibles para un tipo específico.
@@ -76,6 +78,46 @@ def get_insurance_products(insurance_type: str) -> List[Dict[str, Any]]:
     
     return mock_products.get(insurance_type, [])
 
+def get_cross_sell_suggestions(primary_policy_type: str) -> List[Dict[str, Any]]:
+    """
+    Sugiere productos complementarios para ventas cruzadas según la póliza principal del cliente.
+    Estructura compatible con CrossSellOffer (Pydantic).
+
+    Args:
+        primary_policy_type: Tipo de póliza actual ("auto", "hogar", "moto", "vida", "salud")
+
+    Returns:
+        Lista de ofertas sugeridas con product_id, product_type, coverage_level, annual_premium, monthly_premium, reason
+    """
+    print(f"--- [Insurance Tools] Sugerencias cross-sell para póliza: {primary_policy_type} ---")
+
+    # Reglas de cross-sell: qué sugerir según la póliza principal
+    suggestions_map = {
+        "auto": [
+            {"product_id": "hogar_basico", "product_type": "hogar", "coverage_level": "básico", "annual_premium": 180.0, "monthly_premium": 15.0, "reason": "Protege tu hogar con un descuento por tener ya auto con Mapfre"},
+            {"product_id": "vida_basico", "product_type": "vida", "coverage_level": "básico", "annual_premium": 120.0, "monthly_premium": 10.0, "reason": "Protección para tu familia con condiciones preferentes"},
+        ],
+        "hogar": [
+            {"product_id": "auto_basico", "product_type": "auto", "coverage_level": "terceros", "annual_premium": 280.0, "monthly_premium": 23.33, "reason": "Descuento por tener hogar con nosotros"},
+            {"product_id": "vida_basico", "product_type": "vida", "coverage_level": "básico", "annual_premium": 120.0, "monthly_premium": 10.0, "reason": "Protección familiar complementaria"},
+        ],
+        "moto": [
+            {"product_id": "auto_basico", "product_type": "auto", "coverage_level": "terceros", "annual_premium": 280.0, "monthly_premium": 23.33, "reason": "Si tienes coche, descuento por multi-póliza"},
+            {"product_id": "hogar_basico", "product_type": "hogar", "coverage_level": "básico", "annual_premium": 180.0, "monthly_premium": 15.0, "reason": "Protección del hogar con ventaja por ser cliente"},
+        ],
+        "vida": [
+            {"product_id": "hogar_basico", "product_type": "hogar", "coverage_level": "básico", "annual_premium": 180.0, "monthly_premium": 15.0, "reason": "Complementa la protección de tu familia"},
+            {"product_id": "salud_basico", "product_type": "salud", "coverage_level": "básico", "annual_premium": 350.0, "monthly_premium": 29.17, "reason": "Cobertura de salud con condiciones preferentes"},
+        ],
+        "salud": [
+            {"product_id": "vida_basico", "product_type": "vida", "coverage_level": "básico", "annual_premium": 120.0, "monthly_premium": 10.0, "reason": "Protección adicional para tu familia"},
+        ],
+    }
+    primary = primary_policy_type.lower().strip()
+    return suggestions_map.get(primary, [])
+
+
+@tool
 def calculate_quote(insurance_type: str, coverage_level: str, additional_data: Any = None) -> Dict[str, Any]:
     """
     Calcula una cotización para un seguro. Redirige a la función específica según el tipo.
@@ -539,6 +581,7 @@ def _get_coberturas_moto(coverage_level: str) -> List[str]:
     }
     return coberturas.get(coverage_level.lower(), coberturas.get("basica", []))
 
+@tool
 def create_payment_link(amount: float, session_id: str, description: str = "Pago de seguro") -> Dict[str, Any]:
     """
     Crea un link de pago para la contratación del seguro.
@@ -561,6 +604,7 @@ def create_payment_link(amount: float, session_id: str, description: str = "Pago
         "status": "pending"
     }
 
+@tool
 def save_insurance_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Guarda un lead de seguro en la base de datos.
@@ -580,6 +624,7 @@ def save_insurance_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp": "2025-01-20T00:00:00Z"
     }
 
+@tool
 def search_insurance_info(
     query: str, 
     insurance_type: str = None,
@@ -658,6 +703,7 @@ def search_insurance_info(
     
     return result
 
+@tool
 def get_policy_summary(policy_number: str, id_number: str = None) -> Dict[str, Any]:
     """
     Obtiene un resumen básico de una póliza existente.
@@ -685,6 +731,7 @@ def get_policy_summary(policy_number: str, id_number: str = None) -> Dict[str, A
         "payment_status": "al_corriente"
     }
 
+@tool
 def get_billing_details(policy_number: str) -> Dict[str, Any]:
     """
     Obtiene información de facturación de una póliza.
@@ -705,6 +752,7 @@ def get_billing_details(policy_number: str) -> Dict[str, Any]:
         "outstanding_balance": 0.0
     }
 
+@tool
 def create_claim_ticket(policy_number: str, description: str, incident_date: str = None) -> Dict[str, Any]:
     """
     Registra un siniestro nuevo.
@@ -728,6 +776,7 @@ def create_claim_ticket(policy_number: str, description: str, incident_date: str
         "next_steps": "Un gestor revisará el caso en las próximas 24 horas."
     }
 
+@tool
 def get_claim_status(claim_id: str) -> Dict[str, Any]:
     """
     Consulta el estado de un siniestro existente.
@@ -746,6 +795,7 @@ def get_claim_status(claim_id: str) -> Dict[str, Any]:
         "estimated_resolution": "2025-02-05"
     }
 
+@tool
 def request_policy_change(policy_number: str, change_type: str, details: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Registra una solicitud de cambio o cancelación de póliza.
@@ -766,6 +816,7 @@ def request_policy_change(policy_number: str, change_type: str, details: Dict[st
         "request_id": f"REQ-{policy_number[-4:] if policy_number else '0000'}"
     }
 
+@tool
 def update_contact_details(policy_number: str, email: str = None, phone_number: str = None, address: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Actualiza datos de contacto de una póliza.

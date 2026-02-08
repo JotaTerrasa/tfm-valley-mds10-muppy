@@ -10,7 +10,9 @@
 
 **🏆 Sistema multiagente avanzado para gestión integral de seguros**
 
-[📋 Cómo levantar (dev)](#-guía-de-puesta-en-marcha-desarrollo) • [📚 RAG y Ollama](#7-rag-y-ollama-base-de-conocimientos) • [🛠️ API](#-api-reference) • [🤝 Contribuir](#-contribuir)
+[📋 Cómo levantar (dev)](#-guía-de-puesta-en-marcha-desarrollo) • [📁 Estructura del repo](#51-estructura-del-repositorio) • [📊 Observabilidad](#52-observabilidad-arize-logs-trazabilidad) • [🛠️ API](#-api-reference) • [📖 Documentación (docs/)](docs/README.md) • [🤝 Contribuir](#-contribuir)
+
+**Frontend desplegado (Vercel):** [https://tfm-valley-mds10-muppy.vercel.app/](https://tfm-valley-mds10-muppy.vercel.app/) — Para que funcione, el backend debe estar expuesto con **ngrok** y en Vercel debe estar configurado `VITE_API_URL` con la URL del túnel (ver [§ 5.5](#55-frontend-en-vercel-con-backend-local-ngrok)).
 
 ---
 
@@ -222,6 +224,22 @@ Edita `.env` y rellena al menos:
 | `GOOGLE_API_KEY` | **Sí** | API key de Google AI Studio (Gemini). Crear en: https://aistudio.google.com/app/apikey |
 | `API_KEY_SECRET` | No | Clave para proteger la API (si se usa en el código) |
 | `OLLAMA_BASE_URL` | No | URL de Ollama para el RAG (embeddings). Por defecto `http://localhost:11434`. Solo necesaria si Ollama está en otro host/puerto. |
+| `LOGIN_USER` / `LOGIN_PASSWORD` | No | Si los defines, el chat (frontend) exigirá usuario y contraseña; `/invoke` solo aceptará peticiones con un JWT válido (obtenido con `POST /auth/login`). Opcional: `JWT_SECRET_KEY` para firmar los tokens. Los usuarios también se pueden registrar en `data/users.json` (ver abajo). |
+| `ARIZE_SPACE_ID`, `ARIZE_PROJECT_NAME`, `ARIZE_API_KEY` | No | Observabilidad: trazas a Arize AX. Si tu cuenta es EU, añade `ARIZE_COLLECTOR_ENDPOINT=https://otlp.eu-west-1a.arize.com/v1`. Ver [docs/ARIZE_TRACING.md](docs/ARIZE_TRACING.md). |
+| `LOG_FORMAT` | No | Si vale `json`, los logs se emiten en JSON (una línea por evento). |
+
+**Registrar usuarios:** Puedes dar de alta usuarios de dos formas:
+
+1. **Por consola** (desde la raíz del proyecto, venv activado):
+   ```bash
+   python -m app.auth add_user mi_usuario
+   # Te pedirá la contraseña por consola (no se muestra al escribir)
+   ```
+   O con contraseña en la línea de comandos: `python -m app.auth add_user mi_usuario mi_contraseña`
+
+2. **Por API** (para scripts o integraciones): `POST /auth/register` con body `{"username": "...", "password": "..."}` y cabecera **`X-Admin-Key: <API_KEY_SECRET o REGISTER_SECRET>`**. Si no defines `API_KEY_SECRET` ni `REGISTER_SECRET`, el registro por API no estará disponible.
+
+Los usuarios se guardan en **`data/users.json`** (archivo en `.gitignore`). El usuario definido en `LOGIN_USER` (env) no se puede sobrescribir desde el archivo.
 
 Ejemplo mínimo de `.env` en la raíz:
 
@@ -279,7 +297,57 @@ Abre en el navegador la URL que muestre Vite (normalmente `http://localhost:5173
 | Dónde | Comando |
 |-------|--------|
 | Raíz del proyecto | `source venv/bin/activate` → `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` |
+| Raíz (Windows) | `.\scripts\run\start-backend.ps1` para backend, `.\scripts\run\run-stress.ps1` para stress test |
 | `frontend/` | `npm run dev` |
+
+### 5.1. Estructura del repositorio
+
+**Levantar backend o stress test:** todos los scripts están en `scripts/`. Comandos rápidos (para Cursor o para ti): [docs/COMANDOS_RAPIDOS.md](docs/COMANDOS_RAPIDOS.md).
+
+**Máquina de referencia (backend):** La misma sobre la que corre el backend en desarrollo: GPU **RTX 4090**, **128 GB RAM DDR4**, CPU **AMD Ryzen 9 5900XT**, placa base **MSI MPG B550 GAMING PLUS**.
+
+```
+├── app/                    # Backend FastAPI (agentes, estrategias, herramientas)
+├── agents/                 # Configuración y prompts por agente (triage, quote, contract, support)
+├── data/                   # Documentos RAG por producto (seguro_coche, hogar, moto)
+├── docs/                   # Documentación: Arize, logs, métricas, roadmap (ver docs/README.md)
+├── evaluation/             # Golden Set + LLM as a Judge (run_golden.py, judge.py, golden_set.json)
+├── frontend/               # Chat React/Vite
+├── load_tests/             # Stress test con Locust (500 usuarios)
+├── tests/                  # Tests (p. ej. tests/test_rag.py para RAG)
+├── scripts/                 # Todos los scripts. run/ (backend, stress), git/, data/. Ver scripts/README.md
+├── .env, .env.example      # Variables de entorno (raíz)
+└── requirements.txt        # Dependencias Python (incluye Locust para stress test)
+```
+
+### 5.2. Observabilidad (Arize, logs, trazabilidad)
+
+- **Trazas:** El backend envía trazas a **Arize AX** (Tracing Projects). Configuración en `.env`: `ARIZE_SPACE_ID`, `ARIZE_PROJECT_NAME`, `ARIZE_API_KEY`; si tu cuenta es EU, añade `ARIZE_COLLECTOR_ENDPOINT=https://otlp.eu-west-1a.arize.com/v1`. Ver [docs/ARIZE_TRACING.md](docs/ARIZE_TRACING.md).
+- **Trazabilidad:** Cada petición tiene un **Request ID** (`X-Request-ID` en cabeceras y en el span de OpenTelemetry) para correlacionar logs y trazas.
+- **Logs:** Los logs incluyen `request_id`, `trace_id` y `span_id`. Formato JSON opcional con `LOG_FORMAT=json` en `.env`. Ver [docs/LOGGING.md](docs/LOGGING.md).
+- **Métricas y dashboards:** Definición de las 6 métricas core y qué dashboards de Arize añadir: [docs/METRICAS_CORE.md](docs/METRICAS_CORE.md), [docs/ARIZE_DASHBOARDS.md](docs/ARIZE_DASHBOARDS.md).
+- **Índice de documentación:** [docs/README.md](docs/README.md).
+
+### 5.3. Evaluación (Golden Set y LLM as a Judge)
+
+- **Golden Set:** Casos de prueba (input → criterios de respuesta) para detectar regresiones. Con el backend en marcha: `python evaluation/run_golden.py`. Opción `--judge` para evaluar con un LLM juez los casos que tengan `judge_criteria` en `evaluation/golden_set.json`. Ver [evaluation/README.md](evaluation/README.md).
+
+### 5.4. Pruebas de carga (stress test)
+
+- **Locust:** Simula 500 usuarios (health + `/invoke`). Con el backend en marcha: `.\scripts\run\run-stress.ps1` (headless) o `locust -f load_tests/locustfile.py --host=http://localhost:8000` (UI en http://localhost:8089). Locust ya está en `requirements.txt`. Ver [load_tests/README.md](load_tests/README.md). Resumen de comandos: [docs/COMANDOS_RAPIDOS.md](docs/COMANDOS_RAPIDOS.md).
+
+### 5.5. Frontend en Vercel con backend local (ngrok)
+
+El frontend está desplegado en **Vercel** en: **[https://tfm-valley-mds10-muppy.vercel.app/](https://tfm-valley-mds10-muppy.vercel.app/)** (Muppy AI | Asistente de Seguros). Para que ese chat funcione, el backend tiene que estar **expuesto mediante ngrok**; si no, el frontend en Vercel no puede alcanzar un backend que corre solo en local.
+
+Pasos:
+
+1. **Backend** en local: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` (o `.\scripts\run\start-backend.ps1`)
+2. **Túnel ngrok**: `ngrok http 8000 --domain=charmaine-endoperidial-creepingly.ngrok-free.app` (o sin `--domain` si usas URL temporal)
+3. En **Vercel** → proyecto del frontend → **Settings** → **Environment Variables**: `VITE_API_URL` = `https://charmaine-endoperidial-creepingly.ngrok-free.app` (con `https://`)
+4. **Redeploy** el frontend para que el build use la nueva URL.
+
+El frontend ya envía la cabecera `ngrok-skip-browser-warning: true` en las peticiones para evitar la página intersticial de ngrok. Mientras ngrok y el backend estén activos, el chat en [tfm-valley-mds10-muppy.vercel.app](https://tfm-valley-mds10-muppy.vercel.app/) hablará con tu backend local.
 
 ### 6. Problemas frecuentes
 
@@ -298,18 +366,18 @@ El sistema incluye un **RAG** (Retrieval-Augmented Generation) para que los agen
    - Tras instalar, Ollama suele arrancar solo y exponer la API en `http://localhost:11434`. Si no, ejecuta: `ollama serve`.
 
 2. **Modelo de embeddings**  
-   - Usamos **mxbai-embed-large** ([ollama.com/library/mxbai-embed-large](https://ollama.com/library/mxbai-embed-large)), de mixedbread.ai.  
-   - Descargar el modelo en Ollama:
+   - Por defecto usamos **nomic-embed-text** ([ollama.com/library/nomic-embed-text](https://ollama.com/library/nomic-embed-text)): más rápido, latencia muy baja en GPU. Alternativa para máxima calidad: **mxbai-embed-large** (definir `OLLAMA_EMBEDDING_MODEL=mxbai-embed-large` en `.env` y reconstruir el índice).  
+   - Descargar el modelo por defecto en Ollama:
    ```bash
-   ollama pull mxbai-embed-large
+   ollama pull nomic-embed-text
    ```
 
 #### Cómo funciona el RAG
 
 1. **Documentos**: Los Markdown de `data/` (p. ej. `data/seguro_coche/`, `data/seguro_hogar/`, `data/seguro_moto/`) se cargan con metadatos (`insurance_type`, `product`, `doc_type`).
-2. **Fragmentación**: Se trocean con `RecursiveCharacterTextSplitter` (chunk 500, overlap 100) optimizado para títulos Markdown.
-3. **Embeddings**: Cada fragmento se convierte en vector con **Ollama** y el modelo **mxbai-embed-large**.
-4. **Almacenamiento**: Los vectores se guardan en **ChromaDB** (carpeta `chroma_db/`).
+2. **Fragmentación**: Se trocean con `RecursiveCharacterTextSplitter` (chunk y overlap configurables vía `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`).
+3. **Embeddings**: Cada fragmento se convierte en vector con **Ollama** (modelo por defecto **nomic-embed-text**, configurable con `OLLAMA_EMBEDDING_MODEL`; opcional `mxbai-embed-large` para mayor calidad).
+4. **Almacenamiento**: Los vectores se guardan en **ChromaDB** (carpeta `chroma_db/`). Esta carpeta se genera localmente al hacer `rebuild` y está en `.gitignore`; cada desarrollador o entorno debe crear su propio índice.
 5. **Búsqueda**: Los agentes usan la herramienta `search_insurance_info` para hacer búsqueda semántica (y opcionalmente filtrar por tipo de seguro, producto o tipo de documento).
 
 Si **Ollama no está instalado o no está corriendo**, el chat seguirá funcionando, pero las llamadas a `search_insurance_info` fallarán cuando un agente intente consultar la base de conocimientos.
@@ -326,7 +394,7 @@ Cada cotización (`calculate_quote`) consulta **automáticamente** la base de co
    ```bash
    python -m app.rag.vector_store rebuild
    ```
-   Descarga el modelo de embeddings si hace falta: `ollama pull mxbai-embed-large`.
+   Descarga el modelo de embeddings si hace falta: `ollama pull nomic-embed-text` (o `mxbai-embed-large` si has puesto `OLLAMA_EMBEDDING_MODEL=mxbai-embed-large`).
 
 Cuando cotices y el RAG esté disponible, en el **terminal del backend** verás el mensaje: `--- [Insurance Tools] Cotización enriquecida con RAG (base de conocimientos) ---`. Si el RAG no está disponible (Ollama apagado, índice vacío, etc.), la cotización se devuelve igual y las coberturas salen de la lista interna del cálculo.
 
@@ -352,6 +420,18 @@ Probar una búsqueda:
 python -m app.rag.vector_store search "coberturas" coche
 ```
 
+#### Rendimiento del RAG (modelo de embeddings y latencia)
+
+El RAG está ajustado para **baja latencia** (p. ej. herramienta de cotización en segundos o subsegundos en la máquina de referencia):
+
+1. **Modelo por defecto: nomic-embed-text.** Más rápido que mxbai-embed-large; en la máquina de referencia (RTX 4090) las consultas RAG pasan de decenas de segundos a tiempos prácticamente instantáneos. Para priorizar calidad sobre velocidad: `OLLAMA_EMBEDDING_MODEL=mxbai-embed-large` en `.env` y `python -m app.rag.vector_store rebuild`.
+2. **Keep-alive en Ollama:** `OLLAMA_EMBED_KEEP_ALIVE=1800` (30 min) mantiene el modelo en VRAM y evita cold start entre consultas.
+3. **Cache de consultas:** las consultas idénticas reutilizan el embedding en memoria (hasta `RAG_EMBED_CACHE_SIZE` entradas, por defecto 200).
+4. **k=2 y chunks 650:** por defecto se devuelven 2 resultados y chunks de 650 caracteres (configurable con `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`; si cambias, reconstruye el índice con `python -m app.rag.vector_store rebuild`).
+5. **Ollama con GPU:** en la RTX 4090, Ollama usa la GPU por defecto para embeddings. Asegúrate de no tener `OLLAMA_GPU_LAYERS=0`.
+
+**Máquina de referencia (backend):** La misma sobre la que corre el backend en desarrollo tiene: **GPU RTX 4090**, **128 GB RAM DDR4**, **CPU AMD Ryzen 9 5900XT**, **placa base MSI MPG B550 GAMING PLUS**. Con esta configuración, nomic-embed-text + keep_alive + cache dan latencia RAG muy baja en las trazas (Arize).
+
 #### Variable de entorno opcional (Ollama)
 
 Si Ollama no corre en `http://localhost:11434`, define en el `.env` de la raíz:
@@ -368,8 +448,22 @@ En `requirements.txt` están ya incluidas: `chromadb`, `langchain-chroma`, `lang
 
 #### Problemas con el RAG
 
-- **"Connection refused" o error al hacer rebuild/search**: Comprueba que Ollama esté en marcha (`ollama serve` si no arranca solo) y que el modelo esté descargado (`ollama pull mxbai-embed-large`).
+- **"Connection refused" o error al hacer rebuild/search**: Comprueba que Ollama esté en marcha (`ollama serve` si no arranca solo) y que el modelo esté descargado (`ollama pull nomic-embed-text` o `mxbai-embed-large` según `OLLAMA_EMBEDDING_MODEL`).
 - **Ollama en otra máquina o puerto**: Pon en el `.env` de la raíz `OLLAMA_BASE_URL=http://IP:11434` (o la URL que uses).
+
+#### Validación de datos (DNI/NIF/NIE)
+
+En el **Contract Agent**, los datos de lead (nombre, DNI/NIF/NIE, etc.) se validan con un validador español en `app/utils/dni_nif.py`: algoritmo oficial módulo 23, normalización de espacios/guiones y soporte para DNI, NIF de empresa y NIE. Los esquemas estructurados en `app/schemas/structured_outputs.py` usan esta validación para rechazar documentos inválidos.
+
+### 8. Evaluación y Arize Phoenix (tracing LangGraph)
+
+El proyecto incluye **tracing con Arize Phoenix** para observar las invocaciones de LangGraph (qué nodo se ejecuta, qué prompt se usa, latencia, etc.) y un **sistema de evaluación** que analiza los prompts de cada parte del grafo.
+
+1. **Dependencias** (ya en `requirements.txt`): `openinference-instrumentation-langchain`, `arize-phoenix-otel`.
+2. **Activar tracing**: en tu `.env` pon `PHOENIX_PROJECT_NAME=tfm-muppy-multiagent` (o `PHOENIX_ENABLED=true`). El backend registrará el tracer antes de cargar LangGraph; las invocaciones a `/invoke` quedarán trazadas en Phoenix.
+3. **Phoenix**: levanta Phoenix local o usa [Phoenix Cloud](https://docs.arize.com/phoenix/phoenix-cloud). Por defecto el tracer envía a `localhost:4317` (gRPC).
+4. **Catálogo de prompts**: ejecuta `python evaluation/run_evaluation.py` para listar todos los prompts por agente y nodo del grafo. Con `--catalog-json` obtienes el catálogo en JSON (agente, nodo, ruta, texto del prompt, herramientas).
+5. **Muestras para trazas**: con el backend en marcha, `python evaluation/run_evaluation.py --run-samples --samples 5` invoca el API con casos de prueba; en Phoenix podrás ver qué nodos y prompts se usaron en cada conversación.
 
 ---
 
@@ -409,7 +503,7 @@ Antes de comenzar, asegúrate de tener instalado:
 - **Node.js 18+** y **npm**: Para el frontend (descarga en [nodejs.org](https://nodejs.org))
 - **Git**: Para clonar el repositorio
 - **Cuenta en Google AI Studio**: Para obtener la API key de Gemini (gratuita, en [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))
-- **Ollama** (opcional, solo para RAG): Para que los agentes consulten la base de conocimientos (`search_insurance_info`). Descarga en [ollama.com](https://ollama.com) y luego `ollama pull mxbai-embed-large`.
+- **Ollama** (opcional, solo para RAG): Para que los agentes consulten la base de conocimientos (`search_insurance_info`). Descarga en [ollama.com](https://ollama.com) y luego `ollama pull nomic-embed-text` (por defecto; o `mxbai-embed-large` si usas ese modelo).
 
 **Nota:** El proyecto no usa Redis; la memoria de conversaciones y el estado de sesión están en memoria dentro del proceso del backend.
 
@@ -965,19 +1059,27 @@ Importa esta colección para testing visual:
 ### Estructura de Archivos
 
 ```
-tfm-valley-mds10-muppy/
-├── app/                    # Código principal
-│   ├── core/              # Componentes centrales
-│   ├── strategies/        # Lógica de agentes
-│   ├── tools/            # Herramientas específicas
-│   ├── schemas/          # Estructura de datos
-│   └── handlers/         # Gestores de eventos
-├── agents/                # Configuración de agentes
-│   ├── triage_agent/     # Clasificador inicial
-│   ├── quote_agent/      # Cotizaciones
-│   ├── contract_agent/   # Contrataciones
-│   └── support_agent/    # Soporte
-└── requirements.txt      # Dependencias
+├── app/                    # Backend FastAPI
+│   ├── core/              # Orquestador, config, LLM factory
+│   ├── strategies/        # State machine y estrategias por agente
+│   ├── tools/             # Herramientas (pago, leads, etc.)
+│   ├── components/        # Memoria, RAG
+│   ├── logging_config.py  # Logs con request_id/trace_id
+│   └── main.py            # API y middleware
+├── agents/                # Configuración y prompts por agente
+│   ├── triage_agent/      # Clasificador inicial
+│   ├── quote_agent/       # Cotizaciones
+│   ├── contract_agent/    # Contrataciones
+│   └── support_agent/     # Soporte
+├── data/                  # Documentos para RAG (seguro_coche, hogar, moto)
+├── docs/                  # Documentación (Arize, logs, métricas, roadmap)
+├── evaluation/            # Golden Set y LLM as a Judge
+├── load_tests/            # Stress test Locust
+├── scripts/               # Utilidades: git/ (sync repo), data/ (PDF→MD). Ver scripts/README.md
+├── frontend/              # Chat React/Vite
+├── requirements.txt       # Dependencias Python (incluye Locust)
+├── tests/                  # test_rag.py (tests del RAG)
+└── scripts/run/            # start-backend.ps1, start-backend.bat, run-stress.ps1
 ```
 
 ## 📊 Estado Actual del Proyecto
@@ -1048,7 +1150,7 @@ Cada agente se define con un archivo JSON:
 
 - **`app/main.py`**: El "cerebro" principal que recibe peticiones
 - **`agents/*/config.json`**: Configuración de cada agente especializado
-- **`app/tools/insurance_tools.py`**: Funciones específicas de seguros
+- **`app/tools/insurance_tools.py`**: Funciones específicas de seguros. `calculate_quote` acepta `additional_data` en JSON y normaliza claves (p. ej. `car_year`/`año_vehiculo`, `birth_date`/`fecha_nacimiento`) y varios formatos de fecha; si el RAG está disponible, obtiene las coberturas de la base de conocimientos.
 - **`requirements.txt`**: Lista de librerías necesarias
 
 ### Flujo típico de desarrollo
@@ -1274,7 +1376,7 @@ tail -f logs/app.log | grep "quote_agent"
 ### 🐛 Sobre Errores Comunes
 
 **Error al usar RAG / search_insurance_info (connection refused, etc.)**
-> El RAG usa Ollama para embeddings. Asegúrate de que Ollama esté en marcha (`ollama serve` si no arranca solo) y de que el modelo esté descargado (`ollama pull mxbai-embed-large`). Si Ollama está en otro host/puerto, define `OLLAMA_BASE_URL` en el `.env` de la raíz.
+> El RAG usa Ollama para embeddings (por defecto `nomic-embed-text`). Asegúrate de que Ollama esté en marcha (`ollama serve` si no arranca solo) y de que el modelo esté descargado (`ollama pull nomic-embed-text`). Si Ollama está en otro host/puerto, define `OLLAMA_BASE_URL` en el `.env` de la raíz.
 
 **Error: "Agent not found"**
 > Verifica que el directorio del agente existe en `agents/` y tiene un `config.json` válido.

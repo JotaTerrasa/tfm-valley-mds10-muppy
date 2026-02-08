@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any
 
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
@@ -53,6 +54,40 @@ CHROMA_PATH = BASE_DIR / "chroma_db"
 
 # Singleton instance
 _vector_store_instance: Optional["VectorStore"] = None
+
+# Tiempo en segundos que Ollama mantiene el modelo de embeddings cargado (evita cold start).
+# Por defecto 30 min para que en una 4090 el modelo siga en VRAM entre consultas.
+OLLAMA_EMBED_KEEP_ALIVE = int(os.getenv("OLLAMA_EMBED_KEEP_ALIVE", "1800"))
+
+# Modelo de embeddings: nomic-embed-text (más rápido, por defecto) o mxbai-embed-large (mejor calidad).
+# Si cambias de modelo, reconstruye el índice: python -m app.rag.vector_store rebuild
+OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+
+# Cache en memoria de embeddings de consultas (misma query = no volver a llamar a Ollama).
+_embed_query_cache: Dict[str, List[float]] = {}
+_embed_cache_max_size = int(os.getenv("RAG_EMBED_CACHE_SIZE", "200"))
+
+
+class CachedOllamaEmbeddings(Embeddings):
+    """Wrapper que cachea embed_query para evitar llamadas repetidas a Ollama."""
+
+    def __init__(self, delegate: OllamaEmbeddings, cache_max: int = 200):
+        self._delegate = delegate
+        self._cache: Dict[str, List[float]] = {}
+        self._cache_max = cache_max
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return self._delegate.embed_documents(texts)
+
+    def embed_query(self, text: str) -> List[float]:
+        key = text.strip()
+        if key in self._cache:
+            return self._cache[key]
+        vec = self._delegate.embed_query(text)
+        if len(self._cache) >= self._cache_max:
+            self._cache.pop(next(iter(self._cache)))
+        self._cache[key] = vec
+        return vec
 
 
 class VectorStore:
@@ -83,27 +118,32 @@ class VectorStore:
     # Required metadata fields that must be present in every chunk
     REQUIRED_METADATA_FIELDS = ["insurance_type"]
     
-    def __init__(self, embedding_model: str = "mxbai-embed-large"):
+    def __init__(self, embedding_model: Optional[str] = None):
         """
         Initialize the VectorStore.
         
         Args:
-            embedding_model: Name of the Ollama embedding model to use
+            embedding_model: Name of the Ollama embedding model (default: OLLAMA_EMBEDDING_MODEL o mxbai-embed-large)
         """
-        logger.info(f"Initializing VectorStore with model: {embedding_model}")
+        model = embedding_model or OLLAMA_EMBEDDING_MODEL
+        logger.info(f"Initializing VectorStore with model: {model} (keep_alive={OLLAMA_EMBED_KEEP_ALIVE}s)")
         
-        # Usar embeddings locales con Ollama (base_url opcional vía OLLAMA_BASE_URL)
+        # Ollama: keep_alive evita descargar el modelo entre consultas (mucho más rápido en GPU).
         ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.embeddings = OllamaEmbeddings(
-            model=embedding_model,
+        base_embeddings = OllamaEmbeddings(
+            model=model,
             base_url=ollama_base_url,
+            keep_alive=OLLAMA_EMBED_KEEP_ALIVE,
         )
+        # Cache de consultas repetidas para no volver a llamar a Ollama
+        self.embeddings = CachedOllamaEmbeddings(base_embeddings, cache_max=_embed_cache_max_size)
         
-        # Chunk splitter optimizado para documentos de seguros
-        # Separadores específicos para Markdown y estructura de documentos
+        # Chunk splitter: chunk_size mayor = menos chunks = búsqueda más rápida (ligero tradeoff calidad).
+        chunk_size = int(os.getenv("RAG_CHUNK_SIZE", "650"))
+        chunk_overlap = int(os.getenv("RAG_CHUNK_OVERLAP", "80"))
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=100,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
             separators=[
                 "\n## ",      # Headers nivel 2
                 "\n### ",     # Headers nivel 3
@@ -501,7 +541,7 @@ def search_insurance_info(
     insurance_type: Optional[str] = None,
     product: Optional[str] = None,
     doc_type: Optional[str] = None,
-    k: int = 3,
+    k: int = 2,
     include_scores: bool = False
 ) -> str:
     """
@@ -647,8 +687,12 @@ if __name__ == "__main__":
         
         if command == "rebuild":
             print("Rebuilding ChromaDB index...")
+            # Borrar carpeta antes de crear el store (en Windows no se puede borrar si Chroma la tiene abierta)
+            global _vector_store_instance
+            _vector_store_instance = None
+            if CHROMA_PATH.exists():
+                shutil.rmtree(CHROMA_PATH)
             store = get_vector_store()
-            store.rebuild_index()
             print("Done!")
             
         elif command == "stats":

@@ -6,11 +6,10 @@ from typing import Dict, Any, Optional, TypedDict, Annotated
 import operator
 from langchain_core.language_models.base import BaseLanguageModel
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import ValidationError
 from app.utils.file_loader import load_file_content
-from langgraph.prebuilt import ToolNode
 from langdetect import detect
 
 from app.schemas.structured_outputs import AgentState as PydanticAgentState
@@ -129,9 +128,24 @@ class StateMachineStrategy():
         tool_messages = []
         if node_tools and raw_response.tool_calls:
             print(f"--- [Agente] El LLM ha decidido usar una herramienta: {raw_response.tool_calls} ---")
-            tool_node = ToolNode(tools=node_tools)
-            tool_messages = tool_node.invoke([raw_response])
-
+            tools_by_name = {t.name: t for t in node_tools}
+            for tc in raw_response.tool_calls:
+                _name = tc.get("name", None) if isinstance(tc, dict) else getattr(tc, "name", None)
+                _args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {}) or {}
+                _id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                name = _name
+                if not name or name not in tools_by_name:
+                    tool_messages.append(
+                        ToolMessage(content=f"Error: herramienta '{name}' no encontrada.", tool_call_id=_id, name=name or "unknown")
+                    )
+                    continue
+                tool = tools_by_name[name]
+                try:
+                    result = tool.invoke(_args)
+                    content = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+                except Exception as e:
+                    content = json.dumps({"error": str(e)}, ensure_ascii=False)
+                tool_messages.append(ToolMessage(content=content, tool_call_id=_id, name=name))
             print("--- [Agente] Re-invocando LLM con el resultado de la herramienta... ---")
             final_response = llm_with_tools.invoke(final_messages_for_llm + [raw_response] + tool_messages)
             response_content = final_response.content
