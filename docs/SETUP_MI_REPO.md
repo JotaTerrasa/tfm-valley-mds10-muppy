@@ -24,7 +24,7 @@ git merge upstream/Dev
 git push origin Dev
 ```
 
-O ejecuta el script (si lo usas): `./sync-con-sergio.sh`
+O ejecuta el script desde la raíz del proyecto: `./scripts/git/sync-con-sergio.sh`
 
 ---
 

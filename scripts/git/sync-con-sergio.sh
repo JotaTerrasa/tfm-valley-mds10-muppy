@@ -1,5 +1,7 @@
 #!/bin/bash
-# Sincroniza tu rama Dev con la rama Dev del repo de Sergio (upstream).
+# Sincroniza la rama Dev con la rama Dev del repo de Sergio (upstream).
+# Ejecutar desde la raíz del proyecto: ./scripts/git/sync-con-sergio.sh
+# Ver: docs/SETUP_MI_REPO.md
 set -e
 echo "→ Fetching upstream (Sergio)..."
 git fetch upstream

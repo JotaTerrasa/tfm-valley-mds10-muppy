@@ -2,6 +2,8 @@
 
 Frontend web para interactuar con el sistema multiagente **Muppy** (Mapfre Seguros). Incluye una interfaz de chat moderna y conecta con el backend (FastAPI) a través del endpoint `POST /invoke`.
 
+**Desplegado en Vercel:** [https://tfm-valley-mds10-muppy.vercel.app/](https://tfm-valley-mds10-muppy.vercel.app/) — Para que funcione, el backend debe estar expuesto con **ngrok** y en Vercel debe estar configurado `VITE_API_URL` con la URL del túnel (ver README raíz, § 5.5).
+
 ## ✨ Funcionalidades
 
 - **Chat en tiempo real** con UI moderna (dark theme, animaciones, typing indicator).

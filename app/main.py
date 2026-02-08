@@ -1,29 +1,37 @@
+import os
+import logging
+
+# Cargar .env lo primero (raíz del proyecto + fallbacks)
+import app.env_loader as _env  # noqa: E402
+
 import uuid
 import json
 import time
-import os
-import logging
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Arize Phoenix (LangGraph exporter): registrar antes de importar LangChain/LangGraph.
+# Arize AX (Tracing Projects): registrar e instrumentar LangChain antes de importar LangChain.
+_arize_tracer = None
 try:
-    if os.getenv("PHOENIX_PROJECT_NAME") or os.getenv("PHOENIX_ENABLED", "").lower() in ("1", "true", "yes"):
-        from phoenix.otel import register
-        register(
-            project_name=os.getenv("PHOENIX_PROJECT_NAME", "tfm-muppy-multiagent"),
-            auto_instrument=True,
-            batch=os.getenv("PHOENIX_BATCH", "true").lower() in ("1", "true", "yes"),
+    _arize_key = os.getenv("ARIZE_API_KEY") or os.getenv("PHOENIX_API_KEY")
+    _arize_space = os.getenv("ARIZE_SPACE_ID", "U3BhY2U6OTMyOk1tZm8=")
+    if _arize_key and _arize_space:
+        from arize.otel import register as arize_register
+        # Endpoint: ARIZE_COLLECTOR_ENDPOINT en .env (EU: https://otlp.eu-west-1a.arize.com/v1)
+        _arize_tracer = arize_register(
+            space_id=_arize_space,
+            api_key=_arize_key,
+            project_name=os.getenv("ARIZE_PROJECT_NAME") or os.getenv("PHOENIX_PROJECT_NAME") or "mapfre-muppy",
         )
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+        LangChainInstrumentor().instrument(tracer_provider=_arize_tracer)
 except Exception as e:
     import warnings
-    warnings.warn(f"Phoenix tracing no inicializado: {e}", UserWarning)
+    warnings.warn(f"Arize AX tracing no inicializado: {e}", UserWarning)
 
 from fastapi import Request, FastAPI, HTTPException, BackgroundTasks, Depends, Header
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import messages_to_dict
 from langchain_classic.memory.chat_memory import BaseChatMemory
@@ -41,6 +49,7 @@ from app.auth import (
     register_user,
 )
 from app.auth import LOGIN_USER as _ENV_LOGIN_USER
+from app.logging_config import set_request_id, clear_request_id, setup_correlation_logging
 
 app = FastAPI(title="Plataforma de Agentes de IA - Mapfre Seguros")
 
@@ -51,6 +60,9 @@ session_store: Dict[str, dict] = {}
 
 @app.on_event("startup")
 def startup_event():
+    # Forzar carga de .env al arranque (por si el proceso se inició con otro cwd)
+    _env.load_env()
+    setup_correlation_logging()  # request_id, trace_id, span_id en logs
     load_all_agent_configs("agents")
     logger.info("--- [Startup] Configuraciones de agentes cargadas. ---")
     if is_login_required():
@@ -60,7 +72,40 @@ def startup_event():
             logger.info("--- [Startup] Login activo (usuarios en data/users.json). ---")
     else:
         logger.info("--- [Startup] Login no configurado: /invoke es público. ---")
+    key = os.getenv("GOOGLE_API_KEY")
+    env_path = _env.ENV_PATH
+    env_exists = env_path.is_file()
+    if not key:
+        print(f"--- [Startup] GOOGLE_API_KEY NO configurada. .env buscado en: {env_path} (existe: {env_exists}). ---")
+        logger.warning("--- [Startup] GOOGLE_API_KEY no está configurada. Añádela al .env o /invoke fallará. ---")
+    else:
+        print("--- [Startup] GOOGLE_API_KEY cargada correctamente. ---")
+        logger.info("--- [Startup] GOOGLE_API_KEY cargada correctamente. ---")
 
+# Request ID: trazabilidad de peticiones (headers + OpenTelemetry)
+REQUEST_ID_HEADER = "X-Request-ID"
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
+        request.state.request_id = request_id
+        set_request_id(request_id)  # Para que todos los logs de la petición lleven request_id/trace_id
+        # Añadir al span actual de OpenTelemetry para verlo en Arize
+        try:
+            from opentelemetry import trace
+            span = trace.get_current_span()
+            if span.is_recording():
+                span.set_attribute("request_id", request_id)
+        except Exception:
+            pass
+        try:
+            response = await call_next(request)
+            response.headers[REQUEST_ID_HEADER] = request_id
+            return response
+        finally:
+            clear_request_id()
+
+app.add_middleware(RequestIDMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 API_KEY_SECRET = os.getenv("API_KEY_SECRET")
@@ -134,7 +179,7 @@ async def invoke_agent(
     _user: Optional[str] = Depends(get_current_user_optional),
 ):
     start_time = time.time()
-    
+
     try:
         session_id = request.session_id or str(uuid.uuid4())
         
@@ -156,7 +201,7 @@ async def invoke_agent(
         memory = memory_cache.get(session_id) or get_memory_for_agent(agent_config, llm_instance, session_id)
         memory_cache[session_id] = memory
         
-        logger.info(f"--- Petición para Agente: {active_agent_key} | Sesión ID: {session_id} ---")
+        logger.info(f"--- Agente: {active_agent_key} | Sesión: {session_id} ---")
         logger.info(f">>> Usuario: {request.input}")
 
         metadata = request.metadata or {}

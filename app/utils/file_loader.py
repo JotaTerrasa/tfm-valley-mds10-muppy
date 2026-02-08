@@ -1,12 +1,19 @@
 import re
 import os
 
+try:
+    from google.cloud import storage
+except ImportError:
+    storage = None
+
 def load_file_content(path: str) -> str:
     """Carga el contenido de un fichero desde una ruta local o GCS."""
     
     print(f"--- [File Loader] Cargando fichero desde: {path} ---")
 
     if path.startswith("gs://"):
+        if storage is None:
+            raise ImportError("Para rutas gs:// instala: pip install google-cloud-storage")
         try:
             from google.cloud import storage
             client = storage.Client()

@@ -10,7 +10,9 @@
 
 **🏆 Sistema multiagente avanzado para gestión integral de seguros**
 
-[📋 Cómo levantar (dev)](#-guía-de-puesta-en-marcha-desarrollo) • [📚 RAG y Ollama](#7-rag-y-ollama-base-de-conocimientos) • [🛠️ API](#-api-reference) • [🤝 Contribuir](#-contribuir)
+[📋 Cómo levantar (dev)](#-guía-de-puesta-en-marcha-desarrollo) • [📁 Estructura del repo](#51-estructura-del-repositorio) • [📊 Observabilidad](#52-observabilidad-arize-logs-trazabilidad) • [🛠️ API](#-api-reference) • [📖 Documentación (docs/)](docs/README.md) • [🤝 Contribuir](#-contribuir)
+
+**Frontend desplegado (Vercel):** [https://tfm-valley-mds10-muppy.vercel.app/](https://tfm-valley-mds10-muppy.vercel.app/) — Para que funcione, el backend debe estar expuesto con **ngrok** y en Vercel debe estar configurado `VITE_API_URL` con la URL del túnel (ver [§ 5.5](#55-frontend-en-vercel-con-backend-local-ngrok)).
 
 ---
 
@@ -223,6 +225,8 @@ Edita `.env` y rellena al menos:
 | `API_KEY_SECRET` | No | Clave para proteger la API (si se usa en el código) |
 | `OLLAMA_BASE_URL` | No | URL de Ollama para el RAG (embeddings). Por defecto `http://localhost:11434`. Solo necesaria si Ollama está en otro host/puerto. |
 | `LOGIN_USER` / `LOGIN_PASSWORD` | No | Si los defines, el chat (frontend) exigirá usuario y contraseña; `/invoke` solo aceptará peticiones con un JWT válido (obtenido con `POST /auth/login`). Opcional: `JWT_SECRET_KEY` para firmar los tokens. Los usuarios también se pueden registrar en `data/users.json` (ver abajo). |
+| `ARIZE_SPACE_ID`, `ARIZE_PROJECT_NAME`, `ARIZE_API_KEY` | No | Observabilidad: trazas a Arize AX. Si tu cuenta es EU, añade `ARIZE_COLLECTOR_ENDPOINT=https://otlp.eu-west-1a.arize.com/v1`. Ver [docs/ARIZE_TRACING.md](docs/ARIZE_TRACING.md). |
+| `LOG_FORMAT` | No | Si vale `json`, los logs se emiten en JSON (una línea por evento). |
 
 **Registrar usuarios:** Puedes dar de alta usuarios de dos formas:
 
@@ -293,18 +297,55 @@ Abre en el navegador la URL que muestre Vite (normalmente `http://localhost:5173
 | Dónde | Comando |
 |-------|--------|
 | Raíz del proyecto | `source venv/bin/activate` → `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` |
+| Raíz (Windows) | `.\scripts\run\start-backend.ps1` para backend, `.\scripts\run\run-stress.ps1` para stress test |
 | `frontend/` | `npm run dev` |
 
-### 5.1. Frontend en Vercel con backend local (ngrok)
+### 5.1. Estructura del repositorio
 
-Si despliegas el frontend en **Vercel** pero el backend sigue en tu máquina, puedes exponerlo con **ngrok**:
+**Levantar backend o stress test:** todos los scripts están en `scripts/`. Comandos rápidos (para Cursor o para ti): [docs/COMANDOS_RAPIDOS.md](docs/COMANDOS_RAPIDOS.md).
 
-1. **Backend** en local: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
-2. **Túnel ngrok** (dominio fijo o temporal): `ngrok http 8000 --domain=tu-dominio.ngrok-free.app`
-3. En **Vercel** → proyecto del frontend → **Settings** → **Environment Variables**: añade `VITE_API_URL` = `https://tu-dominio.ngrok-free.app`
+```
+├── app/                    # Backend FastAPI (agentes, estrategias, herramientas)
+├── agents/                 # Configuración y prompts por agente (triage, quote, contract, support)
+├── data/                   # Documentos RAG por producto (seguro_coche, hogar, moto)
+├── docs/                   # Documentación: Arize, logs, métricas, roadmap (ver docs/README.md)
+├── evaluation/             # Golden Set + LLM as a Judge (run_golden.py, judge.py, golden_set.json)
+├── frontend/               # Chat React/Vite
+├── load_tests/             # Stress test con Locust (500 usuarios)
+├── tests/                  # Tests (p. ej. tests/test_rag.py para RAG)
+├── scripts/                 # Todos los scripts. run/ (backend, stress), git/, data/. Ver scripts/README.md
+├── .env, .env.example      # Variables de entorno (raíz)
+└── requirements.txt        # Dependencias Python (incluye Locust para stress test)
+```
+
+### 5.2. Observabilidad (Arize, logs, trazabilidad)
+
+- **Trazas:** El backend envía trazas a **Arize AX** (Tracing Projects). Configuración en `.env`: `ARIZE_SPACE_ID`, `ARIZE_PROJECT_NAME`, `ARIZE_API_KEY`; si tu cuenta es EU, añade `ARIZE_COLLECTOR_ENDPOINT=https://otlp.eu-west-1a.arize.com/v1`. Ver [docs/ARIZE_TRACING.md](docs/ARIZE_TRACING.md).
+- **Trazabilidad:** Cada petición tiene un **Request ID** (`X-Request-ID` en cabeceras y en el span de OpenTelemetry) para correlacionar logs y trazas.
+- **Logs:** Los logs incluyen `request_id`, `trace_id` y `span_id`. Formato JSON opcional con `LOG_FORMAT=json` en `.env`. Ver [docs/LOGGING.md](docs/LOGGING.md).
+- **Métricas y dashboards:** Definición de las 6 métricas core y qué dashboards de Arize añadir: [docs/METRICAS_CORE.md](docs/METRICAS_CORE.md), [docs/ARIZE_DASHBOARDS.md](docs/ARIZE_DASHBOARDS.md).
+- **Índice de documentación:** [docs/README.md](docs/README.md).
+
+### 5.3. Evaluación (Golden Set y LLM as a Judge)
+
+- **Golden Set:** Casos de prueba (input → criterios de respuesta) para detectar regresiones. Con el backend en marcha: `python evaluation/run_golden.py`. Opción `--judge` para evaluar con un LLM juez los casos que tengan `judge_criteria` en `evaluation/golden_set.json`. Ver [evaluation/README.md](evaluation/README.md).
+
+### 5.4. Pruebas de carga (stress test)
+
+- **Locust:** Simula 500 usuarios (health + `/invoke`). Con el backend en marcha: `.\scripts\run\run-stress.ps1` (headless) o `locust -f load_tests/locustfile.py --host=http://localhost:8000` (UI en http://localhost:8089). Locust ya está en `requirements.txt`. Ver [load_tests/README.md](load_tests/README.md). Resumen de comandos: [docs/COMANDOS_RAPIDOS.md](docs/COMANDOS_RAPIDOS.md).
+
+### 5.5. Frontend en Vercel con backend local (ngrok)
+
+El frontend está desplegado en **Vercel** en: **[https://tfm-valley-mds10-muppy.vercel.app/](https://tfm-valley-mds10-muppy.vercel.app/)** (Muppy AI | Asistente de Seguros). Para que ese chat funcione, el backend tiene que estar **expuesto mediante ngrok**; si no, el frontend en Vercel no puede alcanzar un backend que corre solo en local.
+
+Pasos:
+
+1. **Backend** en local: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` (o `.\scripts\run\start-backend.ps1`)
+2. **Túnel ngrok**: `ngrok http 8000 --domain=tu-dominio.ngrok-free.app` (o sin `--domain` si usas URL temporal)
+3. En **Vercel** → proyecto del frontend → **Settings** → **Environment Variables**: `VITE_API_URL` = `https://tu-dominio.ngrok-free.app` (con `https://`)
 4. **Redeploy** el frontend para que el build use la nueva URL.
 
-El frontend ya envía la cabecera `ngrok-skip-browser-warning: true` en las peticiones para evitar la página intersticial de ngrok. Mientras ngrok y el backend estén activos, el chat en Vercel hablará con tu backend local.
+El frontend ya envía la cabecera `ngrok-skip-browser-warning: true` en las peticiones para evitar la página intersticial de ngrok. Mientras ngrok y el backend estén activos, el chat en [tfm-valley-mds10-muppy.vercel.app](https://tfm-valley-mds10-muppy.vercel.app/) hablará con tu backend local.
 
 ### 6. Problemas frecuentes
 
@@ -1004,19 +1045,27 @@ Importa esta colección para testing visual:
 ### Estructura de Archivos
 
 ```
-tfm-valley-mds10-muppy/
-├── app/                    # Código principal
-│   ├── core/              # Componentes centrales
-│   ├── strategies/        # Lógica de agentes
-│   ├── tools/            # Herramientas específicas
-│   ├── schemas/          # Estructura de datos
-│   └── handlers/         # Gestores de eventos
-├── agents/                # Configuración de agentes
-│   ├── triage_agent/     # Clasificador inicial
-│   ├── quote_agent/      # Cotizaciones
-│   ├── contract_agent/   # Contrataciones
-│   └── support_agent/    # Soporte
-└── requirements.txt      # Dependencias
+├── app/                    # Backend FastAPI
+│   ├── core/              # Orquestador, config, LLM factory
+│   ├── strategies/        # State machine y estrategias por agente
+│   ├── tools/             # Herramientas (pago, leads, etc.)
+│   ├── components/        # Memoria, RAG
+│   ├── logging_config.py  # Logs con request_id/trace_id
+│   └── main.py            # API y middleware
+├── agents/                # Configuración y prompts por agente
+│   ├── triage_agent/      # Clasificador inicial
+│   ├── quote_agent/       # Cotizaciones
+│   ├── contract_agent/    # Contrataciones
+│   └── support_agent/     # Soporte
+├── data/                  # Documentos para RAG (seguro_coche, hogar, moto)
+├── docs/                  # Documentación (Arize, logs, métricas, roadmap)
+├── evaluation/            # Golden Set y LLM as a Judge
+├── load_tests/            # Stress test Locust
+├── scripts/               # Utilidades: git/ (sync repo), data/ (PDF→MD). Ver scripts/README.md
+├── frontend/              # Chat React/Vite
+├── requirements.txt       # Dependencias Python (incluye Locust)
+├── tests/                  # test_rag.py (tests del RAG)
+└── scripts/run/            # start-backend.ps1, start-backend.bat, run-stress.ps1
 ```
 
 ## 📊 Estado Actual del Proyecto
