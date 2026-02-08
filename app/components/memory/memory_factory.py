@@ -1,5 +1,5 @@
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain.memory import ConversationBufferWindowMemory, ConversationEntityMemory, ConversationBufferMemory
+from langchain_classic.memory import ConversationBufferWindowMemory, ConversationEntityMemory, ConversationBufferMemory
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.chat_history import InMemoryChatMessageHistory
 

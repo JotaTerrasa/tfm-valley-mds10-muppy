@@ -536,6 +536,12 @@ def get_vector_store() -> VectorStore:
     return _vector_store_instance
 
 
+def reset_vector_store_singleton() -> None:
+    """Resetea el singleton (para rebuild desde CLI). Evita usar global dentro de __main__."""
+    global _vector_store_instance
+    _vector_store_instance = None
+
+
 def search_insurance_info(
     query: str, 
     insurance_type: Optional[str] = None,
@@ -688,8 +694,7 @@ if __name__ == "__main__":
         if command == "rebuild":
             print("Rebuilding ChromaDB index...")
             # Borrar carpeta antes de crear el store (en Windows no se puede borrar si Chroma la tiene abierta)
-            global _vector_store_instance
-            _vector_store_instance = None
+            reset_vector_store_singleton()
             if CHROMA_PATH.exists():
                 shutil.rmtree(CHROMA_PATH)
             store = get_vector_store()

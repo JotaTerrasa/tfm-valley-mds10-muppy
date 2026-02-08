@@ -8,6 +8,7 @@ google-auth-oauthlib
 gspread
 httpx
 langchain
+langchain-classic
 langchain-community
 langchain-google-genai
 langchain-openai
