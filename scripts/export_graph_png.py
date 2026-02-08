@@ -2,20 +2,21 @@
 """
 Genera un único PNG del grafo global de orquestación (triage → quote / contract / support).
 Uso (desde la raíz del proyecto, con venv activado):
-  python export_graph_png.py
+  python scripts/export_graph_png.py
 El PNG se guarda como agents/global_graph.png.
 """
 import os
 import sys
 from typing import Literal, TypedDict
 
-# Asegurar que el proyecto está en el path
-project_root = os.path.abspath(os.path.dirname(__file__))
+# Raíz del proyecto (parent de scripts/)
+_project_dir = os.path.abspath(os.path.dirname(__file__))
+project_root = os.path.dirname(_project_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(project_root, ".env"))
 
 from langgraph.graph import StateGraph, END
 

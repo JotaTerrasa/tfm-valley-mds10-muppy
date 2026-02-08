@@ -9,6 +9,7 @@ Todos los scripts están en la carpeta `scripts/`. Los de **run/** pueden ejecut
 ```
 scripts/
 ├── README.md           # Este archivo
+├── export_graph_png.py # Grafo global (PNG) → agents/global_graph.png
 ├── run/                # Levantar backend y pruebas de carga
 │   ├── start-backend.ps1
 │   ├── start-backend.bat
@@ -50,3 +51,11 @@ Requisitos: tener configurado el remote `upstream`. Ver [docs/SETUP_MI_REPO.md](
 | **data/convert_to_md.py** | Convierte todos los PDFs en `data/` a Markdown | `python scripts/data/convert_to_md.py` (desde la raíz) |
 
 Requisitos: `pip install pymupdf` (ya está en `requirements.txt`).
+
+---
+
+## Grafo (diagrama)
+
+| Script | Qué hace | Cómo ejecutar |
+|--------|----------|----------------|
+| **export_graph_png.py** | Genera `agents/global_graph.png` con el grafo de orquestación (triage → quote/contract/support) | `python scripts/export_graph_png.py` (desde la raíz) |

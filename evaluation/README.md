@@ -81,3 +81,13 @@ Ejemplo (GitHub Actions u otro):
 ## LLM as a Judge
 
 Para evaluar “calidad” o criterios más abiertos (cortesía, no revelar datos sensibles, etc.) añade en un caso el campo `judge_criteria` (name, min_score 1-5, description opcional) y ejecuta `python evaluation/run_golden.py --judge`. Requiere GOOGLE_API_KEY. Ver `evaluation/judge.py` para uso standalone.
+
+## Catálogo de prompts y muestras (run_evaluation.py)
+
+Script para listar todos los prompts por agente y nodo del grafo, y opcionalmente invocar muestras (trazas a Phoenix/Arize):
+
+- `python evaluation/run_evaluation.py` — solo catálogo por consola
+- `python evaluation/run_evaluation.py --catalog-json` — catálogo en JSON
+- `python evaluation/run_evaluation.py --run-samples --samples 5` — con backend en marcha, invoca casos de prueba (para ver trazas)
+
+Variables opcionales: `EVAL_API_URL` (URL del backend), `PHOENIX_PROJECT_NAME` / `PHOENIX_ENABLED` para tracing.

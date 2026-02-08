@@ -4,10 +4,10 @@ Sistema de evaluación del multiagente: analiza los prompts de cada parte del gr
 y opcionalmente ejecuta casos de prueba (trazas enviadas a Arize Phoenix si está configurado).
 
 Uso (desde la raíz, con venv activado):
-  python run_evaluation.py                    # solo catálogo de prompts
-  python run_evaluation.py --catalog-json     # imprime catálogo en JSON
-  python run_evaluation.py --run-samples       # catálogo + invoca muestras (para trazas en Phoenix)
-  python run_evaluation.py --run-samples --samples 5
+  python evaluation/run_evaluation.py                    # solo catálogo de prompts
+  python evaluation/run_evaluation.py --catalog-json     # imprime catálogo en JSON
+  python evaluation/run_evaluation.py --run-samples       # catálogo + invoca muestras (para trazas en Phoenix)
+  python evaluation/run_evaluation.py --run-samples --samples 5
 
 Variables de entorno para Phoenix (opcional):
   PHOENIX_PROJECT_NAME  o  PHOENIX_ENABLED=true  para habilitar tracing.
@@ -18,12 +18,14 @@ import sys
 import json
 import argparse
 
-project_root = os.path.abspath(os.path.dirname(__file__))
+# Raíz del proyecto (parent de evaluation/)
+_project_dir = os.path.abspath(os.path.dirname(__file__))
+project_root = os.path.dirname(_project_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(project_root, ".env"))
 
 from app.core.config_manager import load_all_agent_configs, AGENT_CONFIGS
 from app.evaluation.prompt_catalog import build_prompt_catalog, catalog_to_dict

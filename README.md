@@ -341,8 +341,8 @@ El frontend está desplegado en **Vercel** en: **[https://tfm-valley-mds10-muppy
 Pasos:
 
 1. **Backend** en local: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` (o `.\scripts\run\start-backend.ps1`)
-2. **Túnel ngrok**: `ngrok http 8000 --domain=tu-dominio.ngrok-free.app` (o sin `--domain` si usas URL temporal)
-3. En **Vercel** → proyecto del frontend → **Settings** → **Environment Variables**: `VITE_API_URL` = `https://tu-dominio.ngrok-free.app` (con `https://`)
+2. **Túnel ngrok**: `ngrok http 8000 --domain=charmaine-endoperidial-creepingly.ngrok-free.app` (o sin `--domain` si usas URL temporal)
+3. En **Vercel** → proyecto del frontend → **Settings** → **Environment Variables**: `VITE_API_URL` = `https://charmaine-endoperidial-creepingly.ngrok-free.app` (con `https://`)
 4. **Redeploy** el frontend para que el build use la nueva URL.
 
 El frontend ya envía la cabecera `ngrok-skip-browser-warning: true` en las peticiones para evitar la página intersticial de ngrok. Mientras ngrok y el backend estén activos, el chat en [tfm-valley-mds10-muppy.vercel.app](https://tfm-valley-mds10-muppy.vercel.app/) hablará con tu backend local.
@@ -448,8 +448,8 @@ El proyecto incluye **tracing con Arize Phoenix** para observar las invocaciones
 1. **Dependencias** (ya en `requirements.txt`): `openinference-instrumentation-langchain`, `arize-phoenix-otel`.
 2. **Activar tracing**: en tu `.env` pon `PHOENIX_PROJECT_NAME=tfm-muppy-multiagent` (o `PHOENIX_ENABLED=true`). El backend registrará el tracer antes de cargar LangGraph; las invocaciones a `/invoke` quedarán trazadas en Phoenix.
 3. **Phoenix**: levanta Phoenix local o usa [Phoenix Cloud](https://docs.arize.com/phoenix/phoenix-cloud). Por defecto el tracer envía a `localhost:4317` (gRPC).
-4. **Catálogo de prompts**: ejecuta `python run_evaluation.py` para listar todos los prompts por agente y nodo del grafo. Con `--catalog-json` obtienes el catálogo en JSON (agente, nodo, ruta, texto del prompt, herramientas).
-5. **Muestras para trazas**: con el backend en marcha, `python run_evaluation.py --run-samples --samples 5` invoca el API con casos de prueba; en Phoenix podrás ver qué nodos y prompts se usaron en cada conversación.
+4. **Catálogo de prompts**: ejecuta `python evaluation/run_evaluation.py` para listar todos los prompts por agente y nodo del grafo. Con `--catalog-json` obtienes el catálogo en JSON (agente, nodo, ruta, texto del prompt, herramientas).
+5. **Muestras para trazas**: con el backend en marcha, `python evaluation/run_evaluation.py --run-samples --samples 5` invoca el API con casos de prueba; en Phoenix podrás ver qué nodos y prompts se usaron en cada conversación.
 
 ---
 
