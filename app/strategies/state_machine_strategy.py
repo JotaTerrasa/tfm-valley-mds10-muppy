@@ -376,6 +376,14 @@ class StateMachineStrategy():
         if current_value and current_value not in routing_map:
             print(f"--- [Router] ADVERTENCIA: ruta inválida '{current_value}'. Usando nodo por defecto '{default_node}'. ---")
         destination = routing_map.get(current_value, default_node)
+        # El router puede mapear a agentes externos (quote_agent/contract_agent/etc.).
+        # Este grafo solo puede enrutar a nodos internos; el salto entre agentes se hace con next_agent en main.py.
+        if destination not in self.nodes_config:
+            print(
+                f"--- [Router] Destino externo '{destination}' detectado para route='{current_value}'. "
+                f"Permanece en '{default_node}' y delega handoff por next_agent. ---"
+            )
+            destination = default_node
         print(f"--- [Router] Campo: '{routing_field}', Valor: '{current_value}', Intent: '{intent}'. Próximo nodo: '{destination}' ---")
         
         # Validación adicional: solo permitir salir de triage si datos_completos es true
