@@ -6,7 +6,6 @@ import app.env_loader as _env  # noqa: E402
 
 import uuid
 import json
-import time
 
 # Arize AX (Tracing Projects): registrar e instrumentar LangChain antes de importar LangChain.
 _arize_tracer = None
@@ -28,6 +27,7 @@ except Exception as e:
     warnings.warn(f"Arize AX tracing no inicializado: {e}", UserWarning)
 
 from fastapi import Request, FastAPI, HTTPException, BackgroundTasks, Depends, Header
+from fastapi.responses import PlainTextResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
@@ -50,6 +50,12 @@ from app.auth import (
 )
 from app.auth import LOGIN_USER as _ENV_LOGIN_USER
 from app.logging_config import set_request_id, clear_request_id, setup_correlation_logging
+from app.channels import (
+    build_whatsapp_session_id,
+    extract_whatsapp_messages,
+    send_whatsapp_text,
+    verify_whatsapp_signature,
+)
 
 app = FastAPI(title="Plataforma de Agentes de IA - Mapfre Seguros")
 
@@ -172,14 +178,10 @@ async def register(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/invoke")
-async def invoke_agent(
+async def _process_invoke_request(
     request: InvokeRequest,
     background_tasks: BackgroundTasks,
-    _user: Optional[str] = Depends(get_current_user_optional),
-):
-    start_time = time.time()
-
+) -> InvokeResponse:
     try:
         session_id = request.session_id or str(uuid.uuid4())
         
@@ -253,6 +255,78 @@ async def invoke_agent(
     except Exception as e:
         logger.error(f"Error interno del servidor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {e}")
+
+
+@app.post("/invoke")
+async def invoke_agent(
+    request: InvokeRequest,
+    background_tasks: BackgroundTasks,
+    _user: Optional[str] = Depends(get_current_user_optional),
+):
+    return await _process_invoke_request(request, background_tasks)
+
+
+async def _process_whatsapp_message(inbound_message: Dict[str, Any]) -> None:
+    from_number = inbound_message.get("from", "")
+    user_text = (inbound_message.get("text") or "").strip()
+    if not from_number or not user_text:
+        return
+
+    session_id = build_whatsapp_session_id(from_number)
+    invoke_request = InvokeRequest(
+        input=user_text,
+        session_id=session_id,
+        metadata={
+            "source": "whatsapp",
+            "whatsapp": {
+                "from": from_number,
+                "message_id": inbound_message.get("message_id"),
+                "timestamp": inbound_message.get("timestamp"),
+                "phone_number_id": inbound_message.get("phone_number_id"),
+            },
+        },
+    )
+
+    try:
+        response = await _process_invoke_request(invoke_request, BackgroundTasks())
+        await send_whatsapp_text(from_number, response.response or "Ahora mismo no tengo una respuesta.")
+        logger.info("--- [WhatsApp] Respuesta enviada a %s (session_id=%s). ---", from_number, session_id)
+    except Exception as e:
+        logger.error("--- [WhatsApp] Fallo procesando mensaje entrante: %s ---", e, exc_info=True)
+
+
+@app.get("/webhooks/whatsapp")
+async def whatsapp_webhook_verify(request: Request):
+    mode = request.query_params.get("hub.mode")
+    verify_token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+    expected_token = os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip()
+
+    if mode == "subscribe" and expected_token and verify_token == expected_token and challenge:
+        return PlainTextResponse(content=challenge, status_code=200)
+    raise HTTPException(status_code=403, detail="Webhook verify token inválido")
+
+
+@app.post("/webhooks/whatsapp")
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
+    raw_body = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256")
+    if not verify_whatsapp_signature(raw_body, signature):
+        raise HTTPException(status_code=401, detail="Firma de webhook inválida")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Payload JSON inválido")
+
+    messages = extract_whatsapp_messages(payload)
+    if not messages:
+        return {"status": "ignored", "reason": "no_text_messages"}
+
+    for inbound_message in messages:
+        background_tasks.add_task(_process_whatsapp_message, inbound_message)
+
+    return {"status": "accepted", "messages": len(messages)}
 
 @app.get("/")
 async def root():
