@@ -2,7 +2,7 @@
 Herramientas específicas para el agente de seguros.
 Estas son implementaciones placeholder que deben ser adaptadas según las necesidades reales.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import json
 import re
 from langchain_core.tools import tool
@@ -10,6 +10,59 @@ from langchain_core.tools import tool
 # Meses en español para parsear fechas tipo "14 de junio de 1999"
 _MESES_ES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
              "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
+
+_MOCK_CUSTOMERS = {
+    "gustavo_48244958c": {
+        "full_name": "Gustavo de Castro Santos",
+        "dni": "48244958C",
+        "policy_number": "MAP-AUTO-48244958C-01",
+        "insurance_type": "coche",
+        "policy_status": "active",
+        "coverage_summary": [
+            "Responsabilidad civil obligatoria y voluntaria",
+            "Asistencia en carretera",
+            "Defensa jurídica",
+            "Lunas"
+        ],
+        "renewal_date": "2026-12-01",
+        "payment_status": "al_corriente",
+        "next_payment_date": "2026-11-15",
+        "amount_due": 0.0,
+        "currency": "EUR",
+        "payment_method": "domiciliación",
+        "outstanding_balance": 0.0,
+        "default_claim_id": "CLM-4958-001",
+        "claim_status": "in_review",
+        "claim_last_update": "2026-02-12",
+        "claim_estimated_resolution": "2026-02-20",
+        "contact": {
+            "email": "gustavo.castro.santos@example.com",
+            "phone_number": "+34 611223344",
+            "address": {
+                "street": "Calle de la Falsa 123",
+                "city": "Madrid",
+                "postal_code": "28034",
+                "country": "ES"
+            }
+        }
+    }
+}
+
+
+def _norm(v: Any) -> str:
+    return str(v or "").strip().lower()
+
+
+def _resolve_mock_customer(policy_number: str = None, id_number: str = None, hint_text: str = None) -> Dict[str, Any] | None:
+    candidate = " ".join([_norm(policy_number), _norm(id_number), _norm(hint_text)])
+    customer = _MOCK_CUSTOMERS["gustavo_48244958c"]
+    if (
+        _norm(customer["policy_number"]) in candidate
+        or _norm(customer["dni"]) in candidate
+        or "gustavo de castro santos" in candidate
+    ):
+        return customer
+    return None
 
 
 def _normalize_fecha_nacimiento(val: Any) -> str:
@@ -78,6 +131,7 @@ def get_insurance_products(insurance_type: str) -> List[Dict[str, Any]]:
     
     return mock_products.get(insurance_type, [])
 
+@tool
 def get_cross_sell_suggestions(primary_policy_type: str) -> List[Dict[str, Any]]:
     """
     Sugiere productos complementarios para ventas cruzadas según la póliza principal del cliente.
@@ -118,14 +172,18 @@ def get_cross_sell_suggestions(primary_policy_type: str) -> List[Dict[str, Any]]
 
 
 @tool
-def calculate_quote(insurance_type: str, coverage_level: str, additional_data: Any = None) -> Dict[str, Any]:
+def calculate_quote(
+    insurance_type: str,
+    coverage_level: str,
+    additional_data: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Calcula una cotización para un seguro. Redirige a la función específica según el tipo.
     
     Args:
         insurance_type: Tipo de seguro ("auto", "hogar", "moto")
         coverage_level: Nivel de cobertura
-        additional_data: Datos adicionales (dict o string JSON con edad, ubicación, etc.)
+        additional_data: Datos adicionales (dict con edad, ubicación, etc.). Puede omitirse.
     
     Returns:
         Diccionario con la cotización calculada
@@ -134,18 +192,9 @@ def calculate_quote(insurance_type: str, coverage_level: str, additional_data: A
     
     if additional_data is None:
         additional_data = {}
-    elif isinstance(additional_data, str):
-        try:
-            additional_data = json.loads(additional_data)
-        except (json.JSONDecodeError, TypeError) as e:
-            return {
-                "error": "El formato de los datos adicionales no es válido (se espera JSON).",
-                "detalle": str(e),
-                "status": "error"
-            }
     if not isinstance(additional_data, dict):
         return {
-            "error": "additional_data debe ser un diccionario o una cadena JSON.",
+            "error": "additional_data debe ser un diccionario.",
             "status": "error"
         }
     
@@ -716,6 +765,18 @@ def get_policy_summary(policy_number: str, id_number: str = None) -> Dict[str, A
         Resumen de póliza con datos básicos y coberturas
     """
     print(f"--- [Insurance Tools] Consultando póliza: {policy_number} ---")
+    customer = _resolve_mock_customer(policy_number=policy_number, id_number=id_number)
+    if customer:
+        return {
+            "policy_number": customer["policy_number"],
+            "policy_status": customer["policy_status"],
+            "insured_name": customer["full_name"],
+            "id_last_digits": customer["dni"][-4:],
+            "coverage_summary": customer["coverage_summary"],
+            "renewal_date": customer["renewal_date"],
+            "payment_status": customer["payment_status"],
+            "insurance_type": customer["insurance_type"],
+        }
     masked_id = (id_number[-4:] if id_number else "N/A")
     return {
         "policy_number": policy_number,
@@ -743,6 +804,18 @@ def get_billing_details(policy_number: str) -> Dict[str, Any]:
         Detalles de facturación y próximos pagos
     """
     print(f"--- [Insurance Tools] Consultando facturación de póliza: {policy_number} ---")
+    customer = _resolve_mock_customer(policy_number=policy_number, hint_text=policy_number)
+    if customer:
+        return {
+            "policy_number": customer["policy_number"],
+            "next_payment_date": customer["next_payment_date"],
+            "amount_due": customer["amount_due"],
+            "currency": customer["currency"],
+            "payment_method": customer["payment_method"],
+            "outstanding_balance": customer["outstanding_balance"],
+            "insured_name": customer["full_name"],
+            "payment_status": customer["payment_status"],
+        }
     return {
         "policy_number": policy_number,
         "next_payment_date": "2025-11-15",
@@ -766,6 +839,15 @@ def create_claim_ticket(policy_number: str, description: str, incident_date: str
         Confirmación con número de siniestro
     """
     print(f"--- [Insurance Tools] Creando siniestro para póliza: {policy_number} ---")
+    customer = _resolve_mock_customer(policy_number=policy_number, hint_text=description)
+    if customer:
+        return {
+            "claim_id": customer["default_claim_id"],
+            "policy_number": customer["policy_number"],
+            "status": "opened",
+            "incident_date": incident_date or "2026-02-15",
+            "next_steps": f"Solicitud registrada para {customer['full_name']}. Un gestor contactará en menos de 24 horas."
+        }
     suffix = policy_number[-4:] if policy_number else "0000"
     claim_id = f"CLM-{suffix}-001"
     return {
@@ -788,6 +870,16 @@ def get_claim_status(claim_id: str) -> Dict[str, Any]:
         Estado y última actualización
     """
     print(f"--- [Insurance Tools] Consultando estado de siniestro: {claim_id} ---")
+    customer = _resolve_mock_customer(hint_text=claim_id)
+    if customer:
+        return {
+            "claim_id": customer["default_claim_id"],
+            "status": customer["claim_status"],
+            "last_update": customer["claim_last_update"],
+            "estimated_resolution": customer["claim_estimated_resolution"],
+            "insured_name": customer["full_name"],
+            "policy_number": customer["policy_number"],
+        }
     return {
         "claim_id": claim_id,
         "status": "in_review",
@@ -809,6 +901,16 @@ def request_policy_change(policy_number: str, change_type: str, details: Dict[st
         Confirmación de la solicitud
     """
     print(f"--- [Insurance Tools] Solicitud de cambio '{change_type}' para póliza: {policy_number} ---")
+    customer = _resolve_mock_customer(policy_number=policy_number, hint_text=str(details or ""))
+    if customer:
+        return {
+            "policy_number": customer["policy_number"],
+            "change_type": change_type,
+            "status": "received",
+            "request_id": "REQ-4958",
+            "insured_name": customer["full_name"],
+            "details": details or {}
+        }
     return {
         "policy_number": policy_number,
         "change_type": change_type,
@@ -831,6 +933,19 @@ def update_contact_details(policy_number: str, email: str = None, phone_number: 
         Confirmación de actualización
     """
     print(f"--- [Insurance Tools] Actualizando datos de contacto para póliza: {policy_number} ---")
+    customer = _resolve_mock_customer(policy_number=policy_number, hint_text=str(address or ""))
+    if customer:
+        updated = {
+            "email": email or customer["contact"]["email"],
+            "phone_number": phone_number or customer["contact"]["phone_number"],
+            "address": address or customer["contact"]["address"],
+        }
+        return {
+            "policy_number": customer["policy_number"],
+            "status": "updated",
+            "insured_name": customer["full_name"],
+            "updated_fields": updated
+        }
     return {
         "policy_number": policy_number,
         "status": "updated",

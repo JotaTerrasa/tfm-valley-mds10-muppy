@@ -13,6 +13,7 @@
 | [**ROADMAP_TAREAS.md**](ROADMAP_TAREAS.md) | Seguimiento de tareas: trazabilidad, logs, golden set, métricas, stress test, LLM as a Judge, formación. |
 | [**SETUP_MI_REPO.md**](SETUP_MI_REPO.md) | Cómo traer el repo a tu GitHub privado y sincronizar con el repo base (Sergio). |
 | [**COMANDOS_RAPIDOS.md**](COMANDOS_RAPIDOS.md) | Dónde están los scripts para levantar backend y stress test (para Cursor y humanos). |
+| [**GRAFO_E2E_TEST_PLAN.md**](GRAFO_E2E_TEST_PLAN.md) | Batería de pruebas end-to-end para validar ida/vuelta del grafo, handoffs y bloqueo de pagos online. |
 
 ---
 

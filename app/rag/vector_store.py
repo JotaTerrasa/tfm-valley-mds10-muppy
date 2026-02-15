@@ -52,6 +52,20 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 CHROMA_PATH = BASE_DIR / "chroma_db"
 
+
+def _clear_chroma_dir() -> None:
+    """Remove contents of CHROMA_PATH but not the directory (safe for Docker volume mounts)."""
+    if not CHROMA_PATH.exists() or not CHROMA_PATH.is_dir():
+        return
+    for item in CHROMA_PATH.iterdir():
+        # Keep documents hash metadata so change detection works across restarts/rebuilds.
+        if item.name == "documents_metadata.json":
+            continue
+        if item.is_file():
+            item.unlink()
+        else:
+            shutil.rmtree(item)
+
 # Singleton instance
 _vector_store_instance: Optional["VectorStore"] = None
 
@@ -284,8 +298,8 @@ class VectorStore:
         
         # Remove existing ChromaDB if present
         if CHROMA_PATH.exists() and any(CHROMA_PATH.iterdir()):
-            shutil.rmtree(CHROMA_PATH)
-            CHROMA_PATH.mkdir(parents=True, exist_ok=True)
+            _clear_chroma_dir()
+        CHROMA_PATH.mkdir(parents=True, exist_ok=True)
         
         # Create ChromaDB index with validated chunks
         self.db = Chroma.from_documents(
@@ -310,9 +324,8 @@ class VectorStore:
             except Exception as e:
                 logger.debug(f"Could not delete collection: {e}")
         
-        # Remove existing files
-        if CHROMA_PATH.exists():
-            shutil.rmtree(CHROMA_PATH)
+        # Remove existing files (clear contents only; dir may be a volume mount)
+        _clear_chroma_dir()
         
         documents, _ = load_documents(force_reload=True)
         if documents:
@@ -693,10 +706,9 @@ if __name__ == "__main__":
         
         if command == "rebuild":
             print("Rebuilding ChromaDB index...")
-            # Borrar carpeta antes de crear el store (en Windows no se puede borrar si Chroma la tiene abierta)
+            # Vaciar contenido (no la carpeta; así funciona con volúmenes Docker)
             reset_vector_store_singleton()
-            if CHROMA_PATH.exists():
-                shutil.rmtree(CHROMA_PATH)
+            _clear_chroma_dir()
             store = get_vector_store()
             print("Done!")
             

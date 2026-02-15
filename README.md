@@ -298,6 +298,7 @@ Abre en el navegador la URL que muestre Vite (normalmente `http://localhost:5173
 |-------|--------|
 | Raíz del proyecto | `source venv/bin/activate` → `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` |
 | Raíz (Windows) | `.\scripts\run\start-backend.ps1` para backend, `.\scripts\run\run-stress.ps1` para stress test |
+| Docker | `docker compose up -d` (backend + frontend + Ollama). Ver [§ 5.6](#56-docker-levantar-todo-con-un-comando). |
 | `frontend/` | `npm run dev` |
 
 ### 5.1. Estructura del repositorio
@@ -348,6 +349,44 @@ Pasos:
 4. **Redeploy** el frontend para que el build use la nueva URL.
 
 El frontend ya envía la cabecera `ngrok-skip-browser-warning: true` en las peticiones para evitar la página intersticial de ngrok. Mientras ngrok y el backend estén activos, el chat en [tfm-valley-mds10-muppy.vercel.app](https://tfm-valley-mds10-muppy.vercel.app/) hablará con tu backend local.
+
+### 5.6. Docker (levantar todo con un comando)
+
+Puedes levantar **backend + frontend + Ollama** con Docker y no tener que arrancar cada servicio a mano.
+
+**Requisitos:** [Docker](https://docs.docker.com/get-docker/) y [Docker Compose](https://docs.docker.com/compose/install/) instalados. Crea un `.env` en la raíz (copia de `.env.example`) con al menos `GOOGLE_API_KEY`, `LOGIN_USER`, `LOGIN_PASSWORD`, `JWT_SECRET_KEY`.
+
+**Levantar:**
+
+```bash
+docker compose up -d
+```
+
+- **Frontend (chat):** http://localhost:5173
+- **Backend (API):** http://localhost:8000 (y `/docs`)
+- **Ollama:** http://localhost:11434 (para RAG/embeddings)
+
+**Primera vez (modelo de embeddings para RAG):** descarga el modelo dentro del contenedor de Ollama:
+
+```bash
+docker compose exec ollama ollama pull nomic-embed-text
+```
+
+Luego, **crear o reconstruir el índice RAG** dentro del backend:
+
+```bash
+docker compose exec backend python -m app.rag.vector_store rebuild
+```
+
+(Puede tardar varios minutos la primera vez.)
+
+**Parar:**
+
+```bash
+docker compose down
+```
+
+Los datos de ChromaDB y los modelos de Ollama se conservan en volúmenes. La carpeta `data/` del host está montada en el backend (documentos RAG y `data/users.json`). El código del frontend está montado para que los cambios se reflejen con live reload.
 
 ### 6. Problemas frecuentes
 

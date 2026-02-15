@@ -2,6 +2,7 @@ import json
 import re
 import os
 import uuid
+import copy
 from typing import Dict, Any, Optional, TypedDict, Annotated
 import operator
 from langchain_core.language_models.base import BaseLanguageModel
@@ -83,6 +84,8 @@ class StateMachineStrategy():
 
     def _parse_llm_output(self, raw_response_text: str) -> dict:
         raw_response_text = self._message_content_to_str(raw_response_text)
+        # Nunca exponer pseudo-código interno de herramientas al usuario final.
+        raw_response_text = re.sub(r"<tool_code>.*?</tool_code>", "", raw_response_text, flags=re.DOTALL | re.IGNORECASE).strip()
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_response_text, re.DOTALL)
         user_facing_message = raw_response_text
         structured_data = {}
@@ -93,6 +96,23 @@ class StateMachineStrategy():
                 structured_data = json.loads(json_string)
             except json.JSONDecodeError:
                 print(f"--- ERROR: Bloque JSON inválido. ---")
+        else:
+            # Fallback: algunos modelos devuelven JSON en crudo al final (sin ```json).
+            # Si encontramos un objeto JSON válido al final del texto, lo extraemos y no lo mostramos al usuario.
+            decoder = json.JSONDecoder()
+            text = raw_response_text.strip()
+            for idx in range(len(text) - 1, -1, -1):
+                if text[idx] != "{":
+                    continue
+                candidate = text[idx:]
+                try:
+                    parsed_obj, end = decoder.raw_decode(candidate)
+                    if idx + end == len(text) and isinstance(parsed_obj, dict):
+                        structured_data = parsed_obj
+                        user_facing_message = text[:idx].strip()
+                        break
+                except json.JSONDecodeError:
+                    continue
         return {"user_facing_message": user_facing_message or " ", "structured_data": structured_data}
 
     def _run_llm_and_update_state(self, state: GraphState, prompt_template: ChatPromptTemplate, node_tools: list) -> dict:
@@ -123,7 +143,13 @@ class StateMachineStrategy():
         language_system_message = SystemMessage(content=language_instruction)
         final_messages_for_llm = [language_system_message] + system_prompt + [HumanMessage(content=state['user_input'])]
         
-        raw_response = llm_with_tools.invoke(final_messages_for_llm)
+        try:
+            raw_response = llm_with_tools.invoke(final_messages_for_llm)
+        except Exception as e:
+            # Algunos proveedores fallan en validación de schema de tools (p.ej. argumentos null).
+            # Fallback robusto: reintentar sin tools para no romper la petición del usuario.
+            print(f"--- [LLM Call] Error con tools ({e}). Reintentando sin tools. ---")
+            raw_response = self.llm.invoke(final_messages_for_llm)
 
         tool_messages = []
         if node_tools and raw_response.tool_calls:
@@ -147,7 +173,11 @@ class StateMachineStrategy():
                     content = json.dumps({"error": str(e)}, ensure_ascii=False)
                 tool_messages.append(ToolMessage(content=content, tool_call_id=_id, name=name))
             print("--- [Agente] Re-invocando LLM con el resultado de la herramienta... ---")
-            final_response = llm_with_tools.invoke(final_messages_for_llm + [raw_response] + tool_messages)
+            try:
+                final_response = llm_with_tools.invoke(final_messages_for_llm + [raw_response] + tool_messages)
+            except Exception as e:
+                print(f"--- [LLM Call] Error al re-invocar con tools ({e}). Usando fallback sin tools. ---")
+                final_response = self.llm.invoke(final_messages_for_llm + [raw_response] + tool_messages)
             response_content = final_response.content
             final_raw_response_for_parsing = final_response
         else:
@@ -189,8 +219,7 @@ class StateMachineStrategy():
                 "output_tokens": final_raw_response_for_parsing.usage_metadata.get("output_tokens", 0),
             }
         
-        new_structured_data = state['structured_data'].copy()
-        new_structured_data.update(parsed_output["structured_data"])
+        new_structured_data = self._merge_structured_data(state.get("structured_data", {}), parsed_output.get("structured_data", {}))
         try:
             PydanticAgentState.model_validate(new_structured_data)
         except ValidationError as e:
@@ -201,6 +230,35 @@ class StateMachineStrategy():
             "chat_history": [AIMessage(content=parsed_output["user_facing_message"])],
             "token_usage": token_usage
         }
+
+    @staticmethod
+    def _deep_merge_dict(base: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge nested dictionaries without dropping existing subkeys."""
+        result = copy.deepcopy(base)
+        for key, value in (incoming or {}).items():
+            if isinstance(value, dict) and isinstance(result.get(key), dict):
+                result[key] = StateMachineStrategy._deep_merge_dict(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    def _merge_structured_data(self, current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+        if not incoming:
+            return copy.deepcopy(current or {})
+        return self._deep_merge_dict(current or {}, incoming)
+
+    @staticmethod
+    def _reset_for_triage(structured_data: Dict[str, Any]) -> None:
+        """Reset transient flow fields when forcing a return to triage."""
+        structured_data["next_agent"] = None
+        structured_data["route"] = "triage"
+        structured_data["datos_completos"] = False
+        structured_data["pending_field"] = None
+        structured_data["invalid_reason"] = None
+        structured_data["ready_for_commit"] = False
+        structured_data["missing_fields"] = []
+        structured_data["payment_link"] = None
+        structured_data["payment_status"] = "pending"
     
     def _create_node_handler(self, node_name: str, node_config: dict):
         """Crea una función handler para un nodo específico usando clausuras."""
@@ -223,6 +281,70 @@ class StateMachineStrategy():
 
         structured_data = state.get("structured_data", {})
         current_value = structured_data.get(routing_field)
+        user_input = (state.get("user_input") or "").lower()
+        history_text = " ".join(
+            self._message_content_to_str(msg.content).lower()
+            for msg in (state.get("chat_history") or [])
+            if getattr(msg, "type", "") == "human"
+        )
+        combined_text = f"{history_text} {user_input}"
+        has_claim_id = re.search(r"\bclm[-_ ]?\d", combined_text, flags=re.IGNORECASE) is not None
+        has_policy_number = re.search(r"\bmap-[a-z]+-\w+-\d+\b", combined_text, flags=re.IGNORECASE) is not None
+
+        # Clasificador determinista de tópico para soporte (evita bucles de handoff).
+        claims_markers = ("siniestro", "claim", "parte", "golpe", "accidente", "avería", "averia", "incidente")
+        billing_markers = ("factur", "recibo", "pago", "cargo", "cuota")
+        policy_change_markers = ("renovar", "cancelar")
+        update_markers = ("actualizar", "modificar", "cambiar")
+        update_fields = ("email", "correo", "telefono", "teléfono", "dirección", "direccion", "contacto")
+        policy_markers = ("póliza", "poliza", "cobertura")
+
+        if current_value == "soporte":
+            structured_data["route"] = "support"
+            current_value = "support"
+
+        if current_value in ("support", "soporte", "human_handoff"):
+            if has_claim_id or any(k in combined_text for k in claims_markers):
+                structured_data["route"] = "claims"
+            elif any(k in combined_text for k in billing_markers):
+                structured_data["route"] = "billing"
+            elif (
+                any(k in combined_text for k in policy_change_markers)
+                or (
+                    any(k in combined_text for k in ("cambiar", "modificar", "ampliar"))
+                    and any(k in combined_text for k in ("póliza", "poliza", "cobertura", "coberturas"))
+                )
+            ):
+                structured_data["route"] = "policy_change"
+            elif any(k in combined_text for k in update_markers) and any(k in combined_text for k in update_fields):
+                structured_data["route"] = "update_data"
+            elif has_policy_number or any(k in combined_text for k in policy_markers):
+                structured_data["route"] = "policy_lookup"
+            current_value = structured_data.get(routing_field)
+
+        # Escape hatch para soporte: si está en soporte/human_handoff y el usuario trae
+        # una petición operativa, re-enrutar al subflujo adecuado.
+        if current_value in ("support", "soporte", "human_handoff") and "support" in routing_map:
+            if any(k in user_input for k in ("siniestro", "claim", "parte", "golpe", "accidente", "avería", "averia")):
+                structured_data["route"] = "claims"
+            elif any(k in user_input for k in ("factur", "recibo", "pago")):
+                structured_data["route"] = "billing"
+            elif any(k in user_input for k in ("cambiar póliza", "cambiar poliza", "renovar", "cancelar")):
+                structured_data["route"] = "policy_change"
+            elif ("actualizar" in user_input or "modificar" in user_input) and any(
+                k in user_input for k in ("email", "correo", "telefono", "teléfono", "dirección", "direccion", "contacto")
+            ):
+                structured_data["route"] = "update_data"
+            elif any(k in user_input for k in ("póliza", "poliza", "cobertura")):
+                structured_data["route"] = "policy_lookup"
+            current_value = structured_data.get(routing_field)
+
+        # Retroceso explícito del usuario: forzar vuelta a triage sin romper el contexto útil.
+        backtrack_markers = ("volver", "atrás", "atras", "cambiar", "corregir", "me equivoqué", "me equivoque")
+        if current_value != "triage" and any(marker in user_input for marker in backtrack_markers):
+            print("--- [Router] Detección de retroceso/corrección. Volviendo a triage. ---")
+            self._reset_for_triage(structured_data)
+            return default_node
         
         # GUARDRAIL INTELIGENTE: Validación según tipo de flujo
         next_agent = structured_data.get("next_agent")
@@ -240,12 +362,7 @@ class StateMachineStrategy():
                 if not tipo_seguro:
                     print(f"--- [GUARDRAIL] BLOQUEO: Intento de derivar a '{next_agent}' sin tipo_seguro. ---")
                     print(f"    Intent: {intent}, tipo_seguro: {tipo_seguro}")
-                    
-                    # Forzar regreso a triage
-                    state["structured_data"]["next_agent"] = None
-                    state["structured_data"]["route"] = "triage"
-                    state["structured_data"]["datos_completos"] = False
-                    
+                    self._reset_for_triage(state["structured_data"])
                     return default_node
             
             # FLUJO 2: Soporte - Requiere cliente_id + tipo_seguro
@@ -253,14 +370,11 @@ class StateMachineStrategy():
                 if not cliente_id or not tipo_seguro:
                     print(f"--- [GUARDRAIL] BLOQUEO: Intento de derivar a soporte sin datos completos. ---")
                     print(f"    cliente_id: {cliente_id}, tipo_seguro: {tipo_seguro}, requiere_cliente_id: {requiere_cliente_id}")
-                    
-                    # Forzar regreso a triage
-                    state["structured_data"]["next_agent"] = None
-                    state["structured_data"]["route"] = "triage"
-                    state["structured_data"]["datos_completos"] = False
-                    
+                    self._reset_for_triage(state["structured_data"])
                     return default_node
-        
+
+        if current_value and current_value not in routing_map:
+            print(f"--- [Router] ADVERTENCIA: ruta inválida '{current_value}'. Usando nodo por defecto '{default_node}'. ---")
         destination = routing_map.get(current_value, default_node)
         print(f"--- [Router] Campo: '{routing_field}', Valor: '{current_value}', Intent: '{intent}'. Próximo nodo: '{destination}' ---")
         

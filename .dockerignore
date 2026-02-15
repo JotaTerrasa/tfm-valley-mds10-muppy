@@ -1,0 +1,29 @@
+# Entorno virtual y cache Python
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+*.egg
+
+# Git y IDE
+.git
+.gitignore
+.cursor
+.vscode
+.idea
+*.md
+!README.md
+
+# Docker (evitar contexto pesado)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Opcional: no incluir chroma_db en build (se usa volumen en run)
+chroma_db
+
+# Tests y docs si no los necesitas en la imagen
+# tests
+# docs

@@ -184,12 +184,30 @@ async def invoke_agent(
         session_id = request.session_id or str(uuid.uuid4())
         
         current_state = session_store.get(session_id, {})
+        user_input_lc = (request.input or "").lower()
+        backtrack_markers = ("volver", "atrás", "atras", "cambiar", "corregir", "me equivoqué", "me equivoque")
+        if current_state.get("active_agent_key") and current_state.get("active_agent_key") != "triage_agent":
+            if any(marker in user_input_lc for marker in backtrack_markers):
+                logger.info("--- [Main] Solicitud de retroceso detectada. Forzando vuelta a triage. ---")
+                current_state["route"] = "triage"
+                current_state["next_agent"] = None
+                current_state["active_agent_key"] = "triage_agent"
+                current_state["pending_field"] = None
+                current_state["invalid_reason"] = None
+                current_state["ready_for_commit"] = False
+                current_state["missing_fields"] = []
+                current_state["payment_link"] = None
+                current_state["payment_status"] = "pending"
         
-        # Determinar qué agente usar
-        if current_state.get("route") == "triage" or not current_state.get("active_agent_key"):
+        # Determinar qué agente usar (fallback robusto a triage)
+        route = current_state.get("route")
+        active_agent_key = current_state.get("active_agent_key")
+        if route == "triage" or not active_agent_key:
             active_agent_key = "triage_agent"
-        else:
-            active_agent_key = current_state.get("active_agent_key", "triage_agent")
+        elif not get_agent_config(active_agent_key):
+            logger.warning("--- [Main] Agente '%s' no válido en estado. Volviendo a triage. ---", active_agent_key)
+            active_agent_key = "triage_agent"
+            current_state["route"] = "triage"
 
         agent_config = get_agent_config(active_agent_key)
         if not agent_config:
