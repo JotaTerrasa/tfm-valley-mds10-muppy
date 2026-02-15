@@ -6,6 +6,8 @@ import app.env_loader as _env  # noqa: E402
 
 import uuid
 import json
+import re
+from urllib.parse import urlparse
 
 # Arize AX (Tracing Projects): registrar e instrumentar LangChain antes de importar LangChain.
 _arize_tracer = None
@@ -63,6 +65,22 @@ logger = logging.getLogger(__name__)
 
 # Estado de sesión en memoria (sin Redis)
 session_store: Dict[str, dict] = {}
+
+
+def _extract_stripe_checkout_session_id(payment_link: Optional[str]) -> Optional[str]:
+    if not payment_link:
+        return None
+    try:
+        path = urlparse(payment_link).path or ""
+    except Exception:
+        path = payment_link
+    # Checkout links suelen llevar .../c/pay/cs_test_xxx o .../pay/cs_test_xxx
+    match = re.search(r"(cs_(?:test|live)_[A-Za-z0-9]+)", path)
+    if match:
+        return match.group(1)
+    # Fallback por si el enlace llega sin parseo de URL
+    match = re.search(r"(cs_(?:test|live)_[A-Za-z0-9]+)", payment_link)
+    return match.group(1) if match else None
 
 @app.on_event("startup")
 def startup_event():
@@ -241,6 +259,11 @@ async def _process_invoke_request(
             new_structured_data["active_agent_key"] = active_agent_key
 
         if new_structured_data:
+            payment_link = new_structured_data.get("payment_link")
+            if payment_link and not new_structured_data.get("stripe_checkout_session_id"):
+                checkout_session_id = _extract_stripe_checkout_session_id(payment_link)
+                if checkout_session_id:
+                    new_structured_data["stripe_checkout_session_id"] = checkout_session_id
             session_store[session_id] = new_structured_data
             print(f"--- [Estado] Nuevo estado guardado. Próximo Agente: '{new_structured_data['active_agent_key']}'. Próxima Ruta: '{new_structured_data.get('route')}' ---")
 
@@ -289,10 +312,103 @@ async def _process_whatsapp_message(inbound_message: Dict[str, Any]) -> None:
 
     try:
         response = await _process_invoke_request(invoke_request, BackgroundTasks())
-        await send_whatsapp_text(from_number, response.response or "Ahora mismo no tengo una respuesta.")
+        outbound_text = response.response or "Ahora mismo no tengo una respuesta."
+
+        # WhatsApp renderiza mejor enlaces en texto plano.
+        # Si hay payment_link en estado, lo priorizamos limpio y sin duplicados markdown.
+        payment_link = (response.structured_data or {}).get("payment_link")
+        payment_status = (response.structured_data or {}).get("payment_status")
+        if payment_link and payment_status == "pending":
+            # Eliminar links markdown repetidos que pueda generar el LLM.
+            outbound_text = re.sub(r"\[[^\]]+\]\((https?://[^\s)]+)\)", r"\1", outbound_text)
+            # Evitar múltiples enlaces de checkout en el mismo mensaje.
+            outbound_text = re.sub(r"(https://checkout\.stripe\.com/\S+).*(https://checkout\.stripe\.com/\S+)", r"\1", outbound_text, flags=re.DOTALL)
+            outbound_text = (
+                "Tu solicitud está lista para pago de prueba.\n\n"
+                f"Enlace de pago:\n{payment_link}\n\n"
+                "Cuando lo completes, responde: Ya lo he hecho."
+            )
+
+        await send_whatsapp_text(from_number, outbound_text)
         logger.info("--- [WhatsApp] Respuesta enviada a %s (session_id=%s). ---", from_number, session_id)
     except Exception as e:
         logger.error("--- [WhatsApp] Fallo procesando mensaje entrante: %s ---", e, exc_info=True)
+
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+    if not webhook_secret:
+        raise HTTPException(status_code=503, detail="STRIPE_WEBHOOK_SECRET no configurado")
+
+    stripe_signature = request.headers.get("Stripe-Signature")
+    if not stripe_signature:
+        raise HTTPException(status_code=400, detail="Falta cabecera Stripe-Signature")
+
+    payload = await request.body()
+
+    try:
+        import stripe
+
+        event = stripe.Webhook.construct_event(
+            payload=payload,
+            sig_header=stripe_signature,
+            secret=webhook_secret,
+        )
+    except Exception as e:
+        logger.error("--- [Stripe] Firma de webhook inválida: %s ---", e)
+        raise HTTPException(status_code=400, detail="Webhook Stripe inválido")
+
+    event_type = event.get("type")
+    event_data = ((event.get("data") or {}).get("object") or {})
+    logger.info("--- [Stripe] Evento recibido: %s ---", event_type)
+
+    if event_type in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
+        metadata = event_data.get("metadata") or {}
+        internal_session_id = metadata.get("session_id")
+        checkout_session_id = event_data.get("id")
+        stripe_payment_status = event_data.get("payment_status")
+
+        if internal_session_id:
+            state = session_store.get(internal_session_id, {})
+            state["payment_status"] = "successful"
+            state["payment_link"] = None
+            state["route"] = "final_summary"
+            state["status"] = "new"
+            state["active_agent_key"] = state.get("active_agent_key") or "contract_agent"
+            state["stripe_checkout_session_id"] = checkout_session_id
+            state["stripe_payment_status"] = stripe_payment_status
+            session_store[internal_session_id] = state
+
+            logger.info(
+                "--- [Stripe] Pago confirmado para session_id=%s checkout_session_id=%s ---",
+                internal_session_id,
+                checkout_session_id,
+            )
+
+            if internal_session_id.startswith("wa:"):
+                phone = internal_session_id.replace("wa:", "", 1)
+                if phone:
+                    try:
+                        await send_whatsapp_text(
+                            phone,
+                            "Pago de prueba confirmado correctamente. Tu solicitud queda registrada y pasamos al cierre final.",
+                        )
+                    except Exception as e:
+                        logger.error("--- [Stripe] No se pudo enviar confirmación WhatsApp: %s ---", e, exc_info=True)
+
+    if event_type in ("checkout.session.expired", "checkout.session.async_payment_failed"):
+        metadata = event_data.get("metadata") or {}
+        internal_session_id = metadata.get("session_id")
+        if internal_session_id:
+            state = session_store.get(internal_session_id, {})
+            state["payment_status"] = "failed"
+            state["route"] = "payment"
+            state["active_agent_key"] = state.get("active_agent_key") or "contract_agent"
+            session_store[internal_session_id] = state
+            logger.warning("--- [Stripe] Pago fallido/expirado para session_id=%s ---", internal_session_id)
+
+    return {"status": "ok"}
 
 
 @app.get("/webhooks/whatsapp")

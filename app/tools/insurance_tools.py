@@ -5,6 +5,7 @@ Estas son implementaciones placeholder que deben ser adaptadas según las necesi
 from typing import Dict, Any, List, Optional
 import json
 import re
+import os
 from langchain_core.tools import tool
 
 # Meses en español para parsear fechas tipo "14 de junio de 1999"
@@ -643,15 +644,101 @@ def create_payment_link(amount: float, session_id: str, description: str = "Pago
     Returns:
         Diccionario con el link de pago
     """
-    # TODO: Implementar integración real con Stripe u otro proveedor de pagos
     print(f"--- [Insurance Tools] Creando link de pago: {amount} EUR para sesión {session_id} ---")
-    
-    return {
-        "payment_link": f"https://payment.example.com/pay/{session_id}",
-        "amount": amount,
-        "currency": "EUR",
-        "status": "pending"
-    }
+
+    try:
+        amount_value = float(amount)
+    except (TypeError, ValueError):
+        return {
+            "payment_link": None,
+            "amount": amount,
+            "currency": "EUR",
+            "status": "failed",
+            "provider": "stripe",
+            "mode": "test",
+            "error": "Monto inválido para generar el pago."
+        }
+
+    if amount_value <= 0:
+        return {
+            "payment_link": None,
+            "amount": amount_value,
+            "currency": "EUR",
+            "status": "failed",
+            "provider": "stripe",
+            "mode": "test",
+            "error": "El monto debe ser mayor que cero."
+        }
+
+    stripe_secret = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    success_url = (
+        os.getenv("STRIPE_CHECKOUT_SUCCESS_URL")
+        or "http://localhost:5173/payment/success?session_id={CHECKOUT_SESSION_ID}"
+    ).strip()
+    cancel_url = (
+        os.getenv("STRIPE_CHECKOUT_CANCEL_URL")
+        or "http://localhost:5173/payment/cancel"
+    ).strip()
+    currency = (os.getenv("STRIPE_CURRENCY") or "eur").strip().lower()
+
+    if not stripe_secret:
+        # Fallback controlado para desarrollo cuando Stripe no está configurado.
+        return {
+            "payment_link": f"https://payment.example.com/test/{session_id}",
+            "amount": round(amount_value, 2),
+            "currency": currency.upper(),
+            "status": "pending",
+            "provider": "mock",
+            "mode": "test",
+            "warning": "STRIPE_SECRET_KEY no configurada. Se devolvió link mock."
+        }
+
+    try:
+        import stripe
+
+        stripe.api_key = stripe_secret
+        checkout = stripe.checkout.Session.create(
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "session_id": str(session_id or ""),
+                "payment_context": "insurance_contract",
+            },
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": currency,
+                        "unit_amount": int(round(amount_value * 100)),
+                        "product_data": {
+                            "name": (description or "Pago de seguro")[:120],
+                        },
+                    },
+                    "quantity": 1,
+                }
+            ],
+        )
+
+        return {
+            "payment_link": checkout.url,
+            "stripe_checkout_session_id": checkout.id,
+            "amount": round(amount_value, 2),
+            "currency": currency.upper(),
+            "status": "pending",
+            "provider": "stripe",
+            "mode": "test"
+        }
+    except Exception as e:
+        print(f"--- [Insurance Tools] Error Stripe al crear checkout: {e} ---")
+        return {
+            "payment_link": None,
+            "amount": round(amount_value, 2),
+            "currency": currency.upper(),
+            "status": "failed",
+            "provider": "stripe",
+            "mode": "test",
+            "error": str(e),
+        }
 
 @tool
 def save_insurance_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:

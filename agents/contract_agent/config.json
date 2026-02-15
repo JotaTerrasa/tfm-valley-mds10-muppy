@@ -47,7 +47,7 @@
       },
       "payment_node": {
         "prompt_path": "prompts/payment_agent.prompt",
-        "available_tools": []
+        "available_tools": ["create_payment_link"]
       },
       "final_summary_node": {
         "prompt_path": "prompts/final_summary_agent.prompt",

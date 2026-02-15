@@ -247,6 +247,25 @@ Variables adicionales para canal WhatsApp (opcionales, pero obligatorias si usas
 3. Añade tu número en la lista de destinatarios permitidos (modo prueba).
 4. Reinicia el backend tras editar `.env`.
 
+Variables adicionales para pago de prueba con Stripe (opcionales, pero obligatorias si activas `payment_node` con Stripe):
+
+| Variable | Obligatoria (si Stripe) | Descripción |
+|----------|-------------------------|-------------|
+| `STRIPE_SECRET_KEY` | **Sí** | Secret key de Stripe en modo test (`sk_test_...`). |
+| `STRIPE_CHECKOUT_SUCCESS_URL` | **Sí** | URL de éxito para Checkout. Debe incluir `{CHECKOUT_SESSION_ID}`. |
+| `STRIPE_CHECKOUT_CANCEL_URL` | **Sí** | URL de cancelación para Checkout. |
+| `STRIPE_CURRENCY` | No | Moneda para Checkout (por defecto `eur`). |
+| `STRIPE_WEBHOOK_SECRET` | **Sí** | Secreto de firma Stripe para validar `POST /webhooks/stripe` (`whsec_...`). |
+
+### 2.2 Configuración rápida de Stripe Checkout (test)
+
+1. Crea/API key test en Stripe Dashboard (`sk_test_...`) y añádela en `STRIPE_SECRET_KEY`.
+2. Configura las URLs `STRIPE_CHECKOUT_SUCCESS_URL` y `STRIPE_CHECKOUT_CANCEL_URL`.
+3. Arranca listener de Stripe para reenviar eventos al backend:
+   - `stripe listen --forward-to https://<tu-dominio-ngrok>/webhooks/stripe`
+4. Copia el `whsec_...` del listener a `STRIPE_WEBHOOK_SECRET`.
+5. Reinicia backend tras editar `.env`.
+
 **Registrar usuarios:** Puedes dar de alta usuarios de dos formas:
 
 1. **Por consola** (desde la raíz del proyecto, venv activado):
@@ -746,7 +765,7 @@ Este script verifica:
 - ✅ Versión de Python (3.8+)
 - ✅ Todas las dependencias instaladas
 - ✅ Archivo .env configurado
-- ✅ Variables de entorno (GOOGLE_API_KEY y, si aplica, WHATSAPP_* para canal WhatsApp)
+- ✅ Variables de entorno (GOOGLE_API_KEY y, si aplica, WHATSAPP_* / STRIPE_*)
 - ✅ Aplicación importable
 
 ### 🚀 Próximos Pasos Después de la Instalación
@@ -944,29 +963,41 @@ curl -X POST "http://localhost:8000/invoke" \
 Notas:
 - La sesión se mantiene por número (`session_id` estable con prefijo `wa:`).
 - En modo prueba de Meta, el destinatario debe estar en la lista permitida.
+- Si existe `payment_link` pendiente, el enlace se envía en formato plano para evitar roturas en WhatsApp.
 
-#### Webhook de Pago Completado
+#### Webhook de Stripe (implementado)
+
 ```http
-POST /webhooks/stripe/payment-success
+POST /webhooks/stripe
 Content-Type: application/json
-X-Webhook-Signature: stripe_signature
+Stripe-Signature: t=...,v1=...
 
 {
   "id": "evt_1234567890",
-  "type": "payment_intent.succeeded",
+  "type": "checkout.session.completed",
   "data": {
     "object": {
-      "id": "pi_1234567890",
-      "amount": 7500,
-      "currency": "eur",
+      "id": "cs_test_...",
+      "payment_status": "paid",
       "metadata": {
         "session_id": "user001",
-        "policy_type": "auto"
+        "payment_context": "insurance_contract"
       }
     }
   }
 }
 ```
+
+Eventos soportados:
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
+
+Comportamiento:
+- Si pago OK -> `payment_status=successful`, `payment_link=null`, `route=final_summary`.
+- Si pago falla/expira -> `payment_status=failed`, `route=payment`.
+- Si la sesión es WhatsApp (`wa:...`), se envía confirmación automática por WhatsApp.
 
 ---
 
@@ -1444,6 +1475,9 @@ tail -f logs/app.log | grep "quote_agent"
 
 **¿Es posible integrar con WhatsApp?**
 > Sí. Ya está implementado el webhook `GET/POST /webhooks/whatsapp` y el envío de respuestas por WhatsApp Cloud API. Solo necesitas configurar `WHATSAPP_*` en `.env`, verificar callback en Meta y suscribirte al campo `messages`.
+
+**¿Se puede probar pago con Stripe sin producción?**
+> Sí. El flujo actual usa Stripe Checkout en modo test desde `payment_node`. Configura `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`, completa el pago con tarjeta de pruebas (p. ej. `4242 4242 4242 4242`) y el webhook actualizará el estado automáticamente.
 
 ### 🐛 Sobre Errores Comunes
 

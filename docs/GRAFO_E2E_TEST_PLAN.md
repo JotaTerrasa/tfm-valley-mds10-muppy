@@ -89,7 +89,7 @@ Campos clave a revisar:
 
 ---
 
-## Bloque C - Flujo contract_agent (sin pago online)
+## Bloque C - Flujo contract_agent (con pago de prueba Stripe)
 
 ### Caso C1 - Captura de datos de contratación
 1. Completa nombre, fecha nac., email, teléfono, identificación y dirección.
@@ -103,19 +103,21 @@ Campos clave a revisar:
    - Actualiza `collected_data.email`
    - Permite volver a confirmar sin romper estado.
 
-### Caso C3 - Paso payment_node con pagos desactivados
+### Caso C3 - Paso payment_node con Stripe Checkout (test)
 1. Usuario: `Perfecto, quiero pagar ahora`
 2. Esperado:
-   - Mensaje indica que pago online no está disponible.
-   - `payment_link = null` (o ausente, pero nunca URL nueva)
+   - Se genera `payment_link` de Stripe Checkout (URL `checkout.stripe.com`).
    - `payment_status = pending`
-   - El flujo sigue a `final_summary`.
+   - El flujo avanza a `final_summary` manteniendo estado de pago pendiente hasta webhook.
 
-### Caso C4 - Finalización correcta sin cobro online
-1. Esperado:
+### Caso C4 - Confirmación de pago vía webhook Stripe
+1. Completa pago de prueba en Stripe Checkout.
+2. Esperado:
+   - Llega evento a `POST /webhooks/stripe` con firma válida.
+   - `payment_status = successful`
+   - `payment_link = null`
    - `route = final_summary`
-   - `status = new` al cerrar
-   - No aparece `payment_status = successful` generado por el agente.
+   - `status = new` al cerrar.
 
 ---
 
@@ -164,7 +166,8 @@ Se considera OK si:
 - Las correcciones del usuario prevalecen sobre datos anteriores.
 - Hay transición correcta entre agentes (triage -> quote/support/contract/cross_sell).
 - El retroceso ("volver atrás", "cambiar") no rompe sesión.
-- No se generan enlaces de pago ni confirmaciones de pago exitoso.
+- El enlace de pago Stripe se genera correctamente en `payment_node` (modo test).
+- El estado de pago se actualiza por webhook Stripe (`successful`/`failed`) sin intervención manual.
 - El estado mantiene consistencia (`route`, `intent`, `active_agent_key`, `collected_data`).
 
 ## Comandos útiles (PowerShell)
@@ -194,7 +197,7 @@ Estado final de validación manual end-to-end sobre entorno Docker local:
 |---|---|---|
 | A - Triage | PASS | Enrutado correcto a cotizar/soporte/cross-sell y reinicio de flujo correcto. |
 | B - Quote | PASS | Captura secuencial, cotización estable, retroceso y handoff a contratación correctos. |
-| C - Contract | PASS | Captura + verificación correctas, pagos online bloqueados según requisito. |
+| C - Contract | PASS | Captura + verificación correctas, generación de pago test Stripe y cierre por webhook. |
 | D - Soporte (policy lookup, billing, claims, policy_change, update_data, handoff) | PASS | Se aplicaron fixes de enrutado para evitar bucles en handoff y priorizar subflujos operativos. |
 | E - Cross-sell | PASS | Oferta y transición a cotización correctas tras arreglar registro de tool de sugerencias. |
 
