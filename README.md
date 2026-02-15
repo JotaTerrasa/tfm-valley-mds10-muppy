@@ -228,6 +228,25 @@ Edita `.env` y rellena al menos:
 | `ARIZE_SPACE_ID`, `ARIZE_PROJECT_NAME`, `ARIZE_API_KEY` | No | Observabilidad: trazas a Arize AX. Si tu cuenta es EU, añade `ARIZE_COLLECTOR_ENDPOINT=https://otlp.eu-west-1a.arize.com/v1`. Ver [docs/ARIZE_TRACING.md](docs/ARIZE_TRACING.md). |
 | `LOG_FORMAT` | No | Si vale `json`, los logs se emiten en JSON (una línea por evento). |
 
+Variables adicionales para canal WhatsApp (opcionales, pero obligatorias si usas webhook WhatsApp):
+
+| Variable | Obligatoria (si WhatsApp) | Descripción |
+|----------|---------------------------|-------------|
+| `WHATSAPP_API_TOKEN` | **Sí** | Token de acceso de WhatsApp Cloud API (Meta). |
+| `WHATSAPP_PHONE_NUMBER_ID` | **Sí** | Identificador del número de teléfono de WhatsApp Business. |
+| `WHATSAPP_VERIFY_TOKEN` | **Sí** | Token que defines tú para validar `GET /webhooks/whatsapp`. Debe coincidir con Meta. |
+| `WHATSAPP_WEBHOOK_SECRET` | Recomendado | App Secret para validar `X-Hub-Signature-256` en `POST /webhooks/whatsapp`. |
+| `WHATSAPP_API_VERSION` | No | Versión de Graph API. Por defecto `v21.0`. |
+
+### 2.1 Configuración rápida de WhatsApp Cloud API (Meta)
+
+1. En Meta Developers, configura el webhook con:
+   - Callback URL: `https://<tu-dominio-ngrok>/webhooks/whatsapp`
+   - Verify token: el mismo valor de `WHATSAPP_VERIFY_TOKEN`
+2. En "Campos de webhook", suscríbete al campo `messages`.
+3. Añade tu número en la lista de destinatarios permitidos (modo prueba).
+4. Reinicia el backend tras editar `.env`.
+
 **Registrar usuarios:** Puedes dar de alta usuarios de dos formas:
 
 1. **Por consola** (desde la raíz del proyecto, venv activado):
@@ -727,7 +746,7 @@ Este script verifica:
 - ✅ Versión de Python (3.8+)
 - ✅ Todas las dependencias instaladas
 - ✅ Archivo .env configurado
-- ✅ Variables de entorno (GOOGLE_API_KEY, opcional OLLAMA_BASE_URL para RAG)
+- ✅ Variables de entorno (GOOGLE_API_KEY y, si aplica, WHATSAPP_* para canal WhatsApp)
 - ✅ Aplicación importable
 
 ### 🚀 Próximos Pasos Después de la Instalación
@@ -908,9 +927,23 @@ curl -X POST "http://localhost:8000/invoke" \
 
 ---
 
-### 🔄 Webhooks (Próximamente)
+### 🔄 Webhooks
 
-Para integraciones avanzadas con pagos y notificaciones.
+#### Webhook de WhatsApp (implementado)
+
+`GET /webhooks/whatsapp`
+- Verifica el endpoint de Meta (`hub.mode`, `hub.verify_token`, `hub.challenge`).
+- Responde con el `challenge` cuando el token coincide.
+
+`POST /webhooks/whatsapp`
+- Recibe mensajes entrantes de WhatsApp Cloud API.
+- Valida firma `X-Hub-Signature-256` (si `WHATSAPP_WEBHOOK_SECRET` está configurado).
+- Procesa el mensaje con el mismo flujo de `/invoke`.
+- Envía la respuesta al usuario por WhatsApp.
+
+Notas:
+- La sesión se mantiene por número (`session_id` estable con prefijo `wa:`).
+- En modo prueba de Meta, el destinatario debe estar en la lista permitida.
 
 #### Webhook de Pago Completado
 ```http
@@ -1146,7 +1179,7 @@ Importa esta colección para testing visual:
    - Mejorar manejo de casos complejos
 
 3. **Agregar funcionalidades**
-   - Integración WhatsApp completa
+   - Eventos de estado de WhatsApp (delivered/read) y métricas por canal
    - Webhooks de pago
    - Dashboard de métricas
 
@@ -1410,7 +1443,7 @@ tail -f logs/app.log | grep "quote_agent"
 > Crea una función en `app/tools/` y regístrala en `app/tools/registry.py`.
 
 **¿Es posible integrar con WhatsApp?**
-> Sí, la configuración ya está preparada. Solo necesitas configurar las credenciales de WhatsApp Business API.
+> Sí. Ya está implementado el webhook `GET/POST /webhooks/whatsapp` y el envío de respuestas por WhatsApp Cloud API. Solo necesitas configurar `WHATSAPP_*` en `.env`, verificar callback en Meta y suscribirte al campo `messages`.
 
 ### 🐛 Sobre Errores Comunes
 
