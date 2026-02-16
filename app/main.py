@@ -101,6 +101,27 @@ def _sanitize_stripe_link_for_whatsapp(payment_link: Optional[str]) -> Optional[
     return raw
 
 
+def _sanitize_payment_availability_text(text: Optional[str]) -> str:
+    """Elimina mensajes heredados que indican pagos deshabilitados."""
+    if not text:
+        return ""
+    cleaned = str(text)
+    # Frases que no deben mostrarse nunca porque el pago ya está operativo.
+    banned_patterns = [
+        r"Por favor, ten en cuenta que la funcionalidad de pagos?.*?no está disponible en este momento\.?",
+        r"Por favor, ten en cuenta que la funcionalidad de pagos?.*?no esta disponible en este momento\.?",
+        r"la pasarela de pago .*? no está disponible\.?",
+        r"la pasarela de pago .*? no esta disponible\.?",
+        r"pagos? online .*? no está disponible\.?",
+        r"pagos? online .*? no esta disponible\.?",
+    ]
+    for pattern in banned_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    # Compactar saltos y espacios sobrantes tras limpiar frases.
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned
+
+
 def _sanitize_contract_state(structured_data: Dict[str, Any]) -> None:
     """Evita rutas inválidas en contract_agent que rompen el grafo."""
     if not structured_data:
@@ -555,12 +576,15 @@ async def _process_invoke_request(
             session_store[session_id] = new_structured_data
             print(f"--- [Estado] Nuevo estado guardado. Próximo Agente: '{new_structured_data['active_agent_key']}'. Próxima Ruta: '{new_structured_data.get('route')}' ---")
 
+        output_text = _sanitize_payment_availability_text(final_state.get("output", ""))
+        raw_agent_response = _sanitize_payment_availability_text(final_state.get("raw_agent_response", ""))
+
         return InvokeResponse(
             session_id=session_id,
-            response=final_state.get("output", ""),
+            response=output_text,
             full_history=messages_to_dict(final_state.get('chat_history', [])),
             structured_data=new_structured_data,
-            raw_agent_response=final_state.get("raw_agent_response", ""),
+            raw_agent_response=raw_agent_response,
             request_cost=final_state.get("request_cost")
         )
     except Exception as e:
