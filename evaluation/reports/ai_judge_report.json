@@ -1,0 +1,86 @@
+{
+  "generated_at": "2026-02-16T18:08:22.936676Z",
+  "total_scenarios": 3,
+  "passed_scenarios": 3,
+  "failed_scenarios": 0,
+  "pass_rate": 100.0,
+  "results": [
+    {
+      "id": "whatsapp_payment_message_no_unavailable_phrase",
+      "description": "Cuando el usuario pide pagar, la respuesta no debe decir que pagos no están disponibles.",
+      "passed": true,
+      "turns": [
+        {
+          "turn_index": 1,
+          "user": "Quiero contratar un seguro de coche y pagar ahora",
+          "response": "¡Perfecto! Puedes contratar tu seguro de coche y gestionar el pago en el mismo proceso. Te conecto con nuestro agente de contratación para que puedas elegir tu seguro y completar el pago.",
+          "passed": true,
+          "checks": [
+            "ok"
+          ],
+          "judge_results": [
+            {
+              "name": "alineacion_pago_operativo",
+              "score": 5,
+              "reason": "La respuesta indica claramente que el pago se puede gestionar en el mismo proceso de contratación, lo que implica que está operativo.",
+              "passed": true
+            },
+            {
+              "name": "claridad_siguiente_paso",
+              "score": 5,
+              "reason": "El siguiente paso es claro: el usuario será conectado con un agente para elegir el seguro y completar el pago.",
+              "passed": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "post_payment_ack_should_not_reopen_old_warning",
+      "description": "Tras confirmación de pago, no deben aparecer mensajes heredados de pago no disponible.",
+      "passed": true,
+      "turns": [
+        {
+          "turn_index": 1,
+          "user": "Ya he pagado",
+          "response": "Entiendo que ya has realizado un pago. Para poder verificarlo y darte la información que necesites, por favor, indícame tu DNI, NIE o nombre completo, y el tipo de seguro al que corresponde el pago (por ejemplo, auto, hogar, vida).",
+          "passed": true,
+          "checks": [
+            "ok"
+          ],
+          "judge_results": [
+            {
+              "name": "cierre_correcto",
+              "score": 5,
+              "reason": "La respuesta reconoce el pago y solicita la información necesaria para verificarlo, lo cual es un cierre adecuado.",
+              "passed": true
+            },
+            {
+              "name": "tono_profesional",
+              "score": 5,
+              "reason": "El tono es cortés, claro y profesional, solicitando la información necesaria de manera directa.",
+              "passed": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broken_link_recovery_hint",
+      "description": "Si el usuario dice que el enlace falla, la respuesta debe orientar a reintento/regeneración.",
+      "passed": true,
+      "turns": [
+        {
+          "turn_index": 1,
+          "user": "El enlace no funciona",
+          "response": "Entiendo. Para poder ayudarte, por favor, dime qué enlace es el que no funciona o con qué estabas intentando hacer. Así podré dirigirte al agente adecuado.",
+          "passed": true,
+          "checks": [
+            "ok"
+          ],
+          "judge_results": []
+        }
+      ]
+    }
+  ]
+}
