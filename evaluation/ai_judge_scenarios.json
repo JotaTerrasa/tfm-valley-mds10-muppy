@@ -1,0 +1,83 @@
+{
+  "description": "Escenarios multi-turn para AI-as-a-Judge + reglas deterministas del flujo WhatsApp/Stripe.",
+  "base_url": "http://localhost:8000",
+  "scenarios": [
+    {
+      "id": "whatsapp_payment_message_no_unavailable_phrase",
+      "description": "Cuando el usuario pide pagar, la respuesta no debe decir que pagos no están disponibles.",
+      "session_id": "eval-whatsapp-payment-1",
+      "turns": [
+        {
+          "user": "Quiero contratar un seguro de coche y pagar ahora",
+          "must_not_contain": [
+            "pagos no está disponible",
+            "pagos no esta disponible",
+            "pasarela de pago no está disponible",
+            "pasarela de pago no esta disponible",
+            "pago online no está disponible",
+            "pago online no esta disponible"
+          ],
+          "judge_criteria": [
+            {
+              "name": "alineacion_pago_operativo",
+              "min_score": 4,
+              "description": "La respuesta refleja que el pago está operativo o que se continúa al flujo de contratación sin decir que está deshabilitado."
+            },
+            {
+              "name": "claridad_siguiente_paso",
+              "min_score": 4,
+              "description": "La respuesta deja claro el siguiente paso de forma útil para el usuario."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "post_payment_ack_should_not_reopen_old_warning",
+      "description": "Tras confirmación de pago, no deben aparecer mensajes heredados de pago no disponible.",
+      "session_id": "eval-whatsapp-payment-2",
+      "turns": [
+        {
+          "user": "Ya he pagado",
+          "must_not_contain": [
+            "funcionalidad de pagos",
+            "no está disponible en este momento",
+            "no esta disponible en este momento"
+          ],
+          "judge_criteria": [
+            {
+              "name": "cierre_correcto",
+              "min_score": 4,
+              "description": "La respuesta confirma o gestiona el pago con cierre coherente sin contradicciones."
+            },
+            {
+              "name": "tono_profesional",
+              "min_score": 4,
+              "description": "Tono profesional y claro."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broken_link_recovery_hint",
+      "description": "Si el usuario dice que el enlace falla, la respuesta debe orientar a reintento/regeneración.",
+      "session_id": "eval-whatsapp-payment-3",
+      "turns": [
+        {
+          "user": "El enlace no funciona",
+          "must_contain_any": [
+            "enlace",
+            "nuevo",
+            "validaremos",
+            "Stripe"
+          ],
+          "must_not_contain": [
+            "pagos no está disponible",
+            "pagos no esta disponible"
+          ]
+        }
+      ]
+    }
+  ]
+}

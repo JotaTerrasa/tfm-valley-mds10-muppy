@@ -8,6 +8,7 @@ Uso: tener el backend arrancado (ej. .\start-backend.ps1) y ejecutar:
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,6 +27,50 @@ except ImportError:
 def load_golden(path: Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_dotenv_if_available() -> None:
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    if not env_file.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(env_file)
+
+
+def _build_auth_headers(
+    base_url: str,
+    timeout: int,
+    explicit_token: str = "",
+    explicit_user: str = "",
+    explicit_password: str = "",
+) -> dict[str, str]:
+    token = (explicit_token or os.getenv("EVAL_BEARER_TOKEN") or os.getenv("GOLDEN_BEARER_TOKEN") or "").strip()
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+
+    username = (explicit_user or os.getenv("LOGIN_USER") or "").strip()
+    password = (explicit_password or os.getenv("LOGIN_PASSWORD") or "").strip()
+    if not username or not password:
+        return {}
+
+    login_url = f"{base_url.rstrip('/')}/auth/login"
+    try:
+        r = requests.post(
+            login_url,
+            data={"username": username, "password": password},
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        data = r.json()
+        token = (data.get("access_token") or "").strip()
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+    except Exception:
+        return {}
+    return {}
 
 
 def check_case(case: dict, response_text: str, use_judge: bool = False) -> tuple[bool, str]:
@@ -76,12 +121,18 @@ def check_case(case: dict, response_text: str, use_judge: bool = False) -> tuple
     return False, "No expected_keywords, expected_substring, expected_exact or judge_criteria in case"
 
 
-def run_one(base_url: str, case: dict, timeout: int, use_judge: bool = False) -> tuple[bool, str, str]:
+def run_one(
+    base_url: str,
+    case: dict,
+    timeout: int,
+    use_judge: bool = False,
+    headers: dict[str, str] | None = None,
+) -> tuple[bool, str, str]:
     """Llama a /invoke y comprueba la respuesta. Devuelve (ok, response_text, error_msg)."""
     url = f"{base_url.rstrip('/')}/invoke"
     payload = {"input": case["input"]}
     try:
-        r = requests.post(url, json=payload, timeout=timeout)
+        r = requests.post(url, json=payload, headers=headers or {}, timeout=timeout)
         r.raise_for_status()
         data = r.json()
         response_text = data.get("response") or data.get("raw_agent_response") or ""
@@ -122,7 +173,40 @@ def main() -> int:
         action="store_true",
         help="Evaluar con LLM as a Judge los casos que tengan judge_criteria (requiere GOOGLE_API_KEY)",
     )
+    parser.add_argument(
+        "--auth-token",
+        default=os.getenv("EVAL_BEARER_TOKEN", ""),
+        help="Bearer token para /invoke (opcional).",
+    )
+    parser.add_argument(
+        "--auth-user",
+        default=os.getenv("LOGIN_USER", ""),
+        help="Usuario para /auth/login (opcional).",
+    )
+    parser.add_argument(
+        "--auth-password",
+        default=os.getenv("LOGIN_PASSWORD", ""),
+        help="Password para /auth/login (opcional).",
+    )
+    parser.add_argument(
+        "--run-ai-judge",
+        action="store_true",
+        help="Ejecutar tambien escenarios multi-turn de AI Judge (evaluation/run_ai_judge.py).",
+    )
+    parser.add_argument(
+        "--ai-scenarios",
+        type=Path,
+        default=Path(__file__).resolve().parent / "ai_judge_scenarios.json",
+        help="Ruta al JSON de escenarios para run_ai_judge.py",
+    )
+    parser.add_argument(
+        "--ai-out",
+        type=Path,
+        default=Path(__file__).resolve().parent / "reports" / "ai_judge_report.json",
+        help="Ruta del reporte JSON de run_ai_judge.py",
+    )
     args = parser.parse_args()
+    _load_dotenv_if_available()
 
     if not args.golden.is_file():
         print(f"Golden set no encontrado: {args.golden}", file=sys.stderr)
@@ -139,11 +223,24 @@ def main() -> int:
     print(f"Backend:   {base_url}")
     print(f"Judge:     {'sí' if args.judge else 'no'}")
     print(f"Casos:     {len(cases)}\n")
+    auth_headers = _build_auth_headers(
+        base_url=base_url,
+        timeout=args.timeout,
+        explicit_token=args.auth_token,
+        explicit_user=args.auth_user,
+        explicit_password=args.auth_password,
+    )
 
     failed = 0
     for i, case in enumerate(cases, 1):
         cid = case.get("id", f"case_{i}")
-        ok, response_text, msg = run_one(base_url, case, args.timeout, use_judge=args.judge)
+        ok, response_text, msg = run_one(
+            base_url,
+            case,
+            args.timeout,
+            use_judge=args.judge,
+            headers=auth_headers,
+        )
         status = "PASS" if ok else "FAIL"
         if not ok:
             failed += 1
@@ -155,7 +252,44 @@ def main() -> int:
             print(f"           Response: {snippet}")
 
     print(f"\nTotal: {len(cases)} | Pass: {len(cases) - failed} | Fail: {failed}")
-    return 1 if failed else 0
+    exit_code = 1 if failed else 0
+
+    if args.run_ai_judge:
+        print("\n--- Ejecutando AI Judge multi-turn ---")
+        ai_runner = Path(__file__).resolve().parent / "run_ai_judge.py"
+        if not ai_runner.is_file():
+            print(f"No se encuentra runner AI Judge: {ai_runner}", file=sys.stderr)
+            return 2
+
+        cmd = [
+            sys.executable,
+            str(ai_runner),
+            "--scenarios",
+            str(args.ai_scenarios),
+            "--base-url",
+            base_url,
+            "--timeout",
+            str(args.timeout),
+            "--out",
+            str(args.ai_out),
+        ]
+        if args.auth_token:
+            cmd.extend(["--auth-token", args.auth_token])
+        if args.auth_user:
+            cmd.extend(["--auth-user", args.auth_user])
+        if args.auth_password:
+            cmd.extend(["--auth-password", args.auth_password])
+        if args.judge:
+            cmd.append("--judge")
+        if args.verbose:
+            cmd.append("--verbose")
+
+        proc = subprocess.run(cmd, check=False)
+        if proc.returncode != 0:
+            exit_code = 1
+        print(f"--- AI Judge finalizado (exit={proc.returncode}) ---")
+
+    return exit_code
 
 
 if __name__ == "__main__":
