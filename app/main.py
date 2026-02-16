@@ -7,6 +7,7 @@ import app.env_loader as _env  # noqa: E402
 import uuid
 import json
 import re
+import time
 from urllib.parse import urlparse
 
 # Arize AX (Tracing Projects): registrar e instrumentar LangChain antes de importar LangChain.
@@ -29,7 +30,7 @@ except Exception as e:
     warnings.warn(f"Arize AX tracing no inicializado: {e}", UserWarning)
 
 from fastapi import Request, FastAPI, HTTPException, BackgroundTasks, Depends, Header
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
@@ -65,6 +66,8 @@ logger = logging.getLogger(__name__)
 
 # Estado de sesión en memoria (sin Redis)
 session_store: Dict[str, dict] = {}
+recently_completed_whatsapp_sessions: Dict[str, float] = {}
+RECENT_COMPLETION_TTL_SECONDS = 15 * 60
 
 
 def _extract_stripe_checkout_session_id(payment_link: Optional[str]) -> Optional[str]:
@@ -170,6 +173,199 @@ def _mark_payment_failed_for_session(session_id: str) -> None:
     state["route"] = "payment"
     state["active_agent_key"] = state.get("active_agent_key") or "contract_agent"
     session_store[session_id] = state
+
+
+def _is_whatsapp_ack_message(user_text: str) -> bool:
+    if not user_text:
+        return False
+    normalized = re.sub(r"\s+", " ", user_text.lower().strip())
+    ack_markers = {
+        "ok",
+        "okey",
+        "vale",
+        "vake",
+        "perfecto",
+        "genial",
+        "de acuerdo",
+        "entendido",
+        "listo",
+        "gracias",
+        "de nada",
+        "muchas gracias",
+        "perfecto gracias",
+        "vale gracias",
+        "ok gracias",
+    }
+    if normalized in ack_markers:
+        return True
+    return normalized in {"si", "sí"}
+
+
+def _is_paid_confirmation_message(user_text: str) -> bool:
+    if not user_text:
+        return False
+    normalized = re.sub(r"\s+", " ", user_text.lower().strip())
+    paid_markers = {
+        "ya lo he hecho",
+        "ya he pagado",
+        "ya pague",
+        "ya pagué",
+        "ya he realizado el pago",
+        "pagado",
+        "he pagado",
+        "he realizado el pago",
+        "realizado el pago",
+        "listo pagado",
+    }
+    if normalized in paid_markers:
+        return True
+    # Variantes frecuentes de escritura libre en WhatsApp.
+    if "realizado el pago" in normalized:
+        return True
+    if "he pagado" in normalized:
+        return True
+    return False
+
+
+def _mark_recent_whatsapp_completion(session_id: str) -> None:
+    if session_id.startswith("wa:"):
+        recently_completed_whatsapp_sessions[session_id] = time.time()
+
+
+def _is_recent_whatsapp_completion(session_id: str) -> bool:
+    if not session_id.startswith("wa:"):
+        return False
+    ts = recently_completed_whatsapp_sessions.get(session_id)
+    if not ts:
+        return False
+    if time.time() - ts > RECENT_COMPLETION_TTL_SECONDS:
+        recently_completed_whatsapp_sessions.pop(session_id, None)
+        return False
+    return True
+
+
+def _get_payment_redirect_base_url() -> Optional[str]:
+    candidates = (
+        "PAYMENT_REDIRECT_BASE_URL",
+        "PUBLIC_BASE_URL",
+        "APP_BASE_URL",
+        "NGROK_URL",
+    )
+    for key in candidates:
+        value = (os.getenv(key) or "").strip()
+        if value:
+            return value.rstrip("/")
+    return None
+
+
+def _build_whatsapp_payment_delivery_link(session_id: str, payment_link: str) -> str:
+    """
+    Entrega un enlace de pago robusto para WhatsApp:
+    - Si hay base pública configurada, devuelve /pay/<checkout_session_id>
+      (redirección backend->Stripe, sin estado en memoria).
+    - Si no hay base pública, devuelve enlace Stripe limpio.
+    """
+    clean_link = _sanitize_stripe_link_for_whatsapp(payment_link) or payment_link
+    base_url = _get_payment_redirect_base_url()
+    if not base_url:
+        return clean_link
+    checkout_session_id = _extract_stripe_checkout_session_id(clean_link)
+    if not checkout_session_id:
+        return clean_link
+    return f"{base_url}/pay/{checkout_session_id}"
+
+
+def _needs_new_payment_link_message(user_text: str) -> bool:
+    if not user_text:
+        return False
+    normalized = re.sub(r"\s+", " ", user_text.lower().strip())
+    markers = {
+        "enlace no funciona",
+        "link no funciona",
+        "el enlace no funciona",
+        "no funciona el enlace",
+        "nuevo enlace",
+        "manda otro enlace",
+        "pásame otro enlace",
+        "pasame otro enlace",
+    }
+    if normalized in markers:
+        return True
+    return "enlace" in normalized and ("no funciona" in normalized or "otro" in normalized or "nuevo" in normalized)
+
+
+def _extract_payment_amount(state: Dict[str, Any]) -> Optional[float]:
+    if not state:
+        return None
+    candidates = [
+        state.get("annual_premium"),
+        state.get("price"),
+        ((state.get("selected_insurance") or {}).get("annual_premium")),
+        ((state.get("selected_insurance") or {}).get("price")),
+    ]
+    for value in candidates:
+        try:
+            if value is None:
+                continue
+            amount = float(value)
+            if amount > 0:
+                return amount
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _build_payment_description(state: Dict[str, Any]) -> str:
+    selected = (state or {}).get("selected_insurance") or {}
+    product_type = str(selected.get("product_type") or "seguro").strip()
+    coverage_level = str(selected.get("coverage_level") or "").strip()
+    if coverage_level:
+        return f"Seguro de {product_type} {coverage_level}".strip()
+    return f"Seguro de {product_type}".strip()
+
+
+def _create_stripe_checkout_link(session_id: str, amount: float, description: str) -> Optional[Dict[str, str]]:
+    stripe_secret = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    if not stripe_secret:
+        return None
+    success_url = (
+        os.getenv("STRIPE_CHECKOUT_SUCCESS_URL")
+        or "http://localhost:5173/payment/success?session_id={CHECKOUT_SESSION_ID}"
+    ).strip()
+    cancel_url = (
+        os.getenv("STRIPE_CHECKOUT_CANCEL_URL")
+        or "http://localhost:5173/payment/cancel"
+    ).strip()
+    currency = (os.getenv("STRIPE_CURRENCY") or "eur").strip().lower()
+    try:
+        import stripe
+
+        stripe.api_key = stripe_secret
+        checkout = stripe.checkout.Session.create(
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "session_id": str(session_id or ""),
+                "payment_context": "insurance_contract_retry",
+            },
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": currency,
+                        "unit_amount": int(round(float(amount) * 100)),
+                        "product_data": {
+                            "name": (description or "Pago de seguro")[:120],
+                        },
+                    },
+                    "quantity": 1,
+                }
+            ],
+        )
+        return {"payment_link": str(checkout.url), "stripe_checkout_session_id": str(checkout.id)}
+    except Exception as e:
+        logger.warning("--- [WhatsApp] No se pudo crear nuevo checkout Stripe: %s ---", e)
+        return None
 
 @app.on_event("startup")
 def startup_event():
@@ -390,6 +586,15 @@ async def _process_whatsapp_message(inbound_message: Dict[str, Any]) -> None:
     session_id = build_whatsapp_session_id(from_number)
     current_state = session_store.get(session_id, {})
 
+    # Evita reabrir conversación con "ok/gracias/ya he pagado" justo después del cierre.
+    if not current_state and _is_recent_whatsapp_completion(session_id):
+        if _is_whatsapp_ack_message(user_text) or _is_paid_confirmation_message(user_text):
+            await send_whatsapp_text(
+                from_number,
+                "Gracias por contratar con nosotros. Tu solicitud ha quedado registrada correctamente.",
+            )
+            return
+
     # Si la conversación anterior terminó y el pago quedó confirmado,
     # cualquier mensaje nuevo inicia una conversación limpia desde triage.
     if (
@@ -397,49 +602,61 @@ async def _process_whatsapp_message(inbound_message: Dict[str, Any]) -> None:
         and current_state.get("route") == "final_summary"
         and current_state.get("payment_status") == "successful"
     ):
+        _mark_recent_whatsapp_completion(session_id)
         session_store.pop(session_id, None)
         memory_cache.pop(session_id, None)
         logger.info("--- [WhatsApp] Sesión completada detectada. Reinicio de conversación para %s. ---", session_id)
-        ack_markers = {"ok", "vale", "vake", "perfecto", "genial", "de acuerdo", "entendido", "listo"}
-        if user_text.lower().strip() in ack_markers:
+        if _is_whatsapp_ack_message(user_text):
             await send_whatsapp_text(
                 from_number,
-                "Conversación reiniciada correctamente. ¿En qué puedo ayudarte ahora? Puedo cotizar, contratar o ayudarte con soporte.",
+                "Gracias por contratar con nosotros. Tu solicitud ha quedado registrada correctamente.",
             )
             return
 
-    # Fallback anti-race: si el usuario confirma pago antes de que llegue/actualice webhook,
-    # consultamos Stripe por checkout_session_id y actualizamos estado al vuelo.
-    paid_markers = {
-        "ya lo he hecho",
-        "ya pague",
-        "ya pagué",
-        "pagado",
-        "he pagado",
-        "listo pagado",
-    }
-    if user_text.lower().strip() in paid_markers and current_state.get("payment_status") != "successful":
-        checkout_session_id = current_state.get("stripe_checkout_session_id")
-        stripe_secret = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
-        if checkout_session_id and stripe_secret:
-            try:
-                import stripe
+    # Si el cliente reporta enlace roto y el pago sigue pendiente, genera uno nuevo.
+    if (
+        _needs_new_payment_link_message(user_text)
+        and current_state.get("payment_status") != "successful"
+        and current_state.get("route") in {"payment", "final_summary"}
+    ):
+        amount = _extract_payment_amount(current_state)
+        if amount:
+            description = _build_payment_description(current_state)
+            refreshed = _create_stripe_checkout_link(session_id=session_id, amount=amount, description=description)
+            if refreshed:
+                current_state["payment_link"] = refreshed["payment_link"]
+                current_state["stripe_checkout_session_id"] = refreshed["stripe_checkout_session_id"]
+                current_state["route"] = "final_summary"
+                current_state["payment_status"] = "pending"
+                session_store[session_id] = current_state
+                delivered_link = _build_whatsapp_payment_delivery_link(
+                    session_id=session_id,
+                    payment_link=refreshed["payment_link"],
+                )
+                await send_whatsapp_text(
+                    from_number,
+                    (
+                        "Te envío un nuevo enlace de pago.\n\n"
+                        f"Enlace de pago:\n{delivered_link}\n\n"
+                        "Validaremos el pago automáticamente cuando Stripe lo confirme."
+                    ),
+                )
+                return
+        await send_whatsapp_text(
+            from_number,
+            "Ahora mismo no he podido regenerar el enlace. Si quieres, te lo vuelvo a intentar en unos segundos.",
+        )
+        return
 
-                stripe.api_key = stripe_secret
-                checkout = stripe.checkout.Session.retrieve(checkout_session_id)
-                if checkout and checkout.get("payment_status") == "paid":
-                    _mark_payment_success_for_session(
-                        session_id=session_id,
-                        checkout_session_id=checkout_session_id,
-                        stripe_payment_status="paid",
-                    )
-                    await send_whatsapp_text(
-                        from_number,
-                        "Pago de prueba confirmado correctamente. Tu solicitud queda registrada y pasamos al cierre final.",
-                    )
-                    return
-            except Exception as e:
-                logger.warning("--- [WhatsApp] No se pudo validar pago en Stripe en tiempo real: %s ---", e)
+    # El cierre de pago lo confirma automáticamente el webhook de Stripe.
+    # Si el usuario insiste con "ya he pagado" antes de que llegue el evento,
+    # informamos de que la validación es automática y evitamos reabrir flujo.
+    if _is_paid_confirmation_message(user_text) and current_state.get("payment_status") != "successful":
+        await send_whatsapp_text(
+            from_number,
+            "Perfecto, estamos validando el pago automáticamente. Te confirmaremos en cuanto Stripe lo notifique.",
+        )
+        return
 
     invoke_request = InvokeRequest(
         input=user_text,
@@ -471,11 +688,13 @@ async def _process_whatsapp_message(inbound_message: Dict[str, Any]) -> None:
             outbound_text = re.sub(r"\[[^\]]+\]\((https?://[^\s)]+)\)", r"\1", outbound_text)
             # Evitar múltiples enlaces de checkout en el mismo mensaje.
             outbound_text = re.sub(r"(https://checkout\.stripe\.com/\S+).*(https://checkout\.stripe\.com/\S+)", r"\1", outbound_text, flags=re.DOTALL)
-            clean_payment_link = _sanitize_stripe_link_for_whatsapp(payment_link) or payment_link
+            delivered_payment_link = _build_whatsapp_payment_delivery_link(
+                session_id=session_id,
+                payment_link=payment_link,
+            )
             outbound_text = (
-                "Tu solicitud está lista para pago de prueba.\n\n"
-                f"Enlace de pago:\n{clean_payment_link}\n\n"
-                "Cuando lo completes, responde: Ya lo he hecho."
+                "Tu solicitud está lista para el pago.\n\n"
+                f"Enlace de pago:\n{delivered_payment_link}\n\n"
             )
 
         await send_whatsapp_text(from_number, outbound_text)
@@ -535,12 +754,13 @@ async def stripe_webhook(request: Request):
             )
 
             if updated and sid.startswith("wa:"):
+                _mark_recent_whatsapp_completion(sid)
                 phone = sid.replace("wa:", "", 1)
                 if phone:
                     try:
                         await send_whatsapp_text(
                             phone,
-                            "Pago de prueba confirmado correctamente. Tu solicitud queda registrada y pasamos al cierre final.",
+                            "Pago confirmado correctamente. Gracias por contratar con nosotros. Tu solicitud ha quedado registrada.",
                         )
                     except Exception as e:
                         logger.error("--- [Stripe] No se pudo enviar confirmación WhatsApp: %s ---", e, exc_info=True)
@@ -561,6 +781,30 @@ async def stripe_webhook(request: Request):
             logger.warning("--- [Stripe] Pago fallido/expirado para session_id=%s ---", sid)
 
     return {"status": "ok"}
+
+
+@app.get("/pay/{checkout_session_id}")
+async def payment_redirect(checkout_session_id: str):
+    if not re.match(r"^cs_(?:test|live)_[A-Za-z0-9]+$", checkout_session_id):
+        raise HTTPException(status_code=404, detail="Enlace de pago inválido o expirado")
+
+    stripe_secret = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    if not stripe_secret:
+        raise HTTPException(status_code=503, detail="Pasarela de pago no configurada")
+
+    try:
+        import stripe
+
+        stripe.api_key = stripe_secret
+        checkout = stripe.checkout.Session.retrieve(checkout_session_id)
+        target = (checkout or {}).get("url")
+    except Exception as e:
+        logger.warning("--- [Pay Redirect] No se pudo recuperar checkout %s: %s ---", checkout_session_id, e)
+        raise HTTPException(status_code=404, detail="Enlace de pago inválido o expirado")
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Enlace de pago inválido o expirado")
+    return RedirectResponse(url=target, status_code=307)
 
 
 @app.get("/webhooks/whatsapp")
