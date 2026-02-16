@@ -82,6 +82,95 @@ def _extract_stripe_checkout_session_id(payment_link: Optional[str]) -> Optional
     match = re.search(r"(cs_(?:test|live)_[A-Za-z0-9]+)", payment_link)
     return match.group(1) if match else None
 
+
+def _sanitize_stripe_link_for_whatsapp(payment_link: Optional[str]) -> Optional[str]:
+    """
+    Devuelve el enlace de checkout en texto plano (sin markdown),
+    conservando la URL completa original de Stripe.
+    """
+    if not payment_link:
+        return None
+    raw = str(payment_link).strip()
+    # Si por cualquier motivo llega en markdown [url](url), extraemos la URL.
+    md_match = re.match(r"^\[[^\]]+\]\((https?://[^\s)]+)\)$", raw)
+    if md_match:
+        return md_match.group(1)
+    return raw
+
+
+def _sanitize_contract_state(structured_data: Dict[str, Any]) -> None:
+    """Evita rutas inválidas en contract_agent que rompen el grafo."""
+    if not structured_data:
+        return
+    if structured_data.get("active_agent_key") != "contract_agent":
+        return
+    allowed_routes = {"data_capture", "verification", "payment", "final_summary"}
+    current_route = structured_data.get("route")
+    if current_route not in allowed_routes:
+        structured_data["route"] = "data_capture"
+        structured_data["status"] = structured_data.get("status") or "incomplete"
+        structured_data["payment_status"] = structured_data.get("payment_status") or "pending"
+
+
+def _candidate_session_ids(internal_session_id: Optional[str]) -> List[str]:
+    """Genera posibles claves de sesión para mapear webhooks de Stripe."""
+    if not internal_session_id:
+        return []
+    base = str(internal_session_id).strip()
+    if not base:
+        return []
+    candidates = [base]
+    if base.startswith("wa:"):
+        plain = base.replace("wa:", "", 1).strip()
+        if plain:
+            candidates.append(plain)
+    else:
+        candidates.append(f"wa:{base}")
+    # Deduplicar preservando orden
+    deduped: List[str] = []
+    for key in candidates:
+        if key and key not in deduped:
+            deduped.append(key)
+    return deduped
+
+
+def _find_sessions_by_checkout_id(checkout_session_id: Optional[str]) -> List[str]:
+    if not checkout_session_id:
+        return []
+    matches: List[str] = []
+    for sid, state in session_store.items():
+        if (state or {}).get("stripe_checkout_session_id") == checkout_session_id:
+            matches.append(sid)
+    return matches
+
+
+def _mark_payment_success_for_session(session_id: str, checkout_session_id: Optional[str], stripe_payment_status: Optional[str]) -> bool:
+    state = session_store.get(session_id, {})
+    # Idempotencia: si ya estaba confirmado para este mismo checkout, no repetir acciones.
+    if (
+        state.get("payment_status") == "successful"
+        and checkout_session_id
+        and state.get("stripe_checkout_session_id") == checkout_session_id
+    ):
+        return False
+    state["payment_status"] = "successful"
+    state["payment_link"] = None
+    state["route"] = "final_summary"
+    state["status"] = "new"
+    state["active_agent_key"] = state.get("active_agent_key") or "contract_agent"
+    state["stripe_checkout_session_id"] = checkout_session_id
+    state["stripe_payment_status"] = stripe_payment_status
+    session_store[session_id] = state
+    return True
+
+
+def _mark_payment_failed_for_session(session_id: str) -> None:
+    state = session_store.get(session_id, {})
+    state["payment_status"] = "failed"
+    state["route"] = "payment"
+    state["active_agent_key"] = state.get("active_agent_key") or "contract_agent"
+    session_store[session_id] = state
+
 @app.on_event("startup")
 def startup_event():
     # Forzar carga de .env al arranque (por si el proceso se inició con otro cwd)
@@ -254,9 +343,12 @@ async def _process_invoke_request(
         next_agent_from_triage = new_structured_data.pop("next_agent", None)
         if next_agent_from_triage:
             new_structured_data["active_agent_key"] = next_agent_from_triage
+            if next_agent_from_triage == "contract_agent":
+                _sanitize_contract_state(new_structured_data)
             print(f"--- [Orquestador] Transición al agente: {next_agent_from_triage} ---")
         else:
             new_structured_data["active_agent_key"] = active_agent_key
+            _sanitize_contract_state(new_structured_data)
 
         if new_structured_data:
             payment_link = new_structured_data.get("payment_link")
@@ -296,6 +388,59 @@ async def _process_whatsapp_message(inbound_message: Dict[str, Any]) -> None:
         return
 
     session_id = build_whatsapp_session_id(from_number)
+    current_state = session_store.get(session_id, {})
+
+    # Si la conversación anterior terminó y el pago quedó confirmado,
+    # cualquier mensaje nuevo inicia una conversación limpia desde triage.
+    if (
+        current_state.get("status") == "new"
+        and current_state.get("route") == "final_summary"
+        and current_state.get("payment_status") == "successful"
+    ):
+        session_store.pop(session_id, None)
+        memory_cache.pop(session_id, None)
+        logger.info("--- [WhatsApp] Sesión completada detectada. Reinicio de conversación para %s. ---", session_id)
+        ack_markers = {"ok", "vale", "vake", "perfecto", "genial", "de acuerdo", "entendido", "listo"}
+        if user_text.lower().strip() in ack_markers:
+            await send_whatsapp_text(
+                from_number,
+                "Conversación reiniciada correctamente. ¿En qué puedo ayudarte ahora? Puedo cotizar, contratar o ayudarte con soporte.",
+            )
+            return
+
+    # Fallback anti-race: si el usuario confirma pago antes de que llegue/actualice webhook,
+    # consultamos Stripe por checkout_session_id y actualizamos estado al vuelo.
+    paid_markers = {
+        "ya lo he hecho",
+        "ya pague",
+        "ya pagué",
+        "pagado",
+        "he pagado",
+        "listo pagado",
+    }
+    if user_text.lower().strip() in paid_markers and current_state.get("payment_status") != "successful":
+        checkout_session_id = current_state.get("stripe_checkout_session_id")
+        stripe_secret = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+        if checkout_session_id and stripe_secret:
+            try:
+                import stripe
+
+                stripe.api_key = stripe_secret
+                checkout = stripe.checkout.Session.retrieve(checkout_session_id)
+                if checkout and checkout.get("payment_status") == "paid":
+                    _mark_payment_success_for_session(
+                        session_id=session_id,
+                        checkout_session_id=checkout_session_id,
+                        stripe_payment_status="paid",
+                    )
+                    await send_whatsapp_text(
+                        from_number,
+                        "Pago de prueba confirmado correctamente. Tu solicitud queda registrada y pasamos al cierre final.",
+                    )
+                    return
+            except Exception as e:
+                logger.warning("--- [WhatsApp] No se pudo validar pago en Stripe en tiempo real: %s ---", e)
+
     invoke_request = InvokeRequest(
         input=user_text,
         session_id=session_id,
@@ -315,17 +460,21 @@ async def _process_whatsapp_message(inbound_message: Dict[str, Any]) -> None:
         outbound_text = response.response or "Ahora mismo no tengo una respuesta."
 
         # WhatsApp renderiza mejor enlaces en texto plano.
-        # Si hay payment_link en estado, lo priorizamos limpio y sin duplicados markdown.
-        payment_link = (response.structured_data or {}).get("payment_link")
-        payment_status = (response.structured_data or {}).get("payment_status")
-        if payment_link and payment_status == "pending":
+        # Si hay payment_link en estado y estamos en fase de pago, lo enviamos una sola vez.
+        structured = response.structured_data or {}
+        payment_link = structured.get("payment_link")
+        payment_status = structured.get("payment_status")
+        route = structured.get("route")
+        should_force_payment_message = bool(payment_link) and payment_status != "successful" and route in {"payment", "final_summary"}
+        if should_force_payment_message:
             # Eliminar links markdown repetidos que pueda generar el LLM.
             outbound_text = re.sub(r"\[[^\]]+\]\((https?://[^\s)]+)\)", r"\1", outbound_text)
             # Evitar múltiples enlaces de checkout en el mismo mensaje.
             outbound_text = re.sub(r"(https://checkout\.stripe\.com/\S+).*(https://checkout\.stripe\.com/\S+)", r"\1", outbound_text, flags=re.DOTALL)
+            clean_payment_link = _sanitize_stripe_link_for_whatsapp(payment_link) or payment_link
             outbound_text = (
                 "Tu solicitud está lista para pago de prueba.\n\n"
-                f"Enlace de pago:\n{payment_link}\n\n"
+                f"Enlace de pago:\n{clean_payment_link}\n\n"
                 "Cuando lo completes, responde: Ya lo he hecho."
             )
 
@@ -368,26 +517,25 @@ async def stripe_webhook(request: Request):
         internal_session_id = metadata.get("session_id")
         checkout_session_id = event_data.get("id")
         stripe_payment_status = event_data.get("payment_status")
+        target_sessions: List[str] = []
+        target_sessions.extend(_candidate_session_ids(internal_session_id))
+        target_sessions.extend(_find_sessions_by_checkout_id(checkout_session_id))
+        # Deduplicar preservando orden
+        deduped_targets: List[str] = []
+        for sid in target_sessions:
+            if sid and sid not in deduped_targets:
+                deduped_targets.append(sid)
 
-        if internal_session_id:
-            state = session_store.get(internal_session_id, {})
-            state["payment_status"] = "successful"
-            state["payment_link"] = None
-            state["route"] = "final_summary"
-            state["status"] = "new"
-            state["active_agent_key"] = state.get("active_agent_key") or "contract_agent"
-            state["stripe_checkout_session_id"] = checkout_session_id
-            state["stripe_payment_status"] = stripe_payment_status
-            session_store[internal_session_id] = state
-
+        for sid in deduped_targets:
+            updated = _mark_payment_success_for_session(sid, checkout_session_id, stripe_payment_status)
             logger.info(
                 "--- [Stripe] Pago confirmado para session_id=%s checkout_session_id=%s ---",
-                internal_session_id,
+                sid,
                 checkout_session_id,
             )
 
-            if internal_session_id.startswith("wa:"):
-                phone = internal_session_id.replace("wa:", "", 1)
+            if updated and sid.startswith("wa:"):
+                phone = sid.replace("wa:", "", 1)
                 if phone:
                     try:
                         await send_whatsapp_text(
@@ -400,13 +548,17 @@ async def stripe_webhook(request: Request):
     if event_type in ("checkout.session.expired", "checkout.session.async_payment_failed"):
         metadata = event_data.get("metadata") or {}
         internal_session_id = metadata.get("session_id")
-        if internal_session_id:
-            state = session_store.get(internal_session_id, {})
-            state["payment_status"] = "failed"
-            state["route"] = "payment"
-            state["active_agent_key"] = state.get("active_agent_key") or "contract_agent"
-            session_store[internal_session_id] = state
-            logger.warning("--- [Stripe] Pago fallido/expirado para session_id=%s ---", internal_session_id)
+        checkout_session_id = event_data.get("id")
+        target_sessions: List[str] = []
+        target_sessions.extend(_candidate_session_ids(internal_session_id))
+        target_sessions.extend(_find_sessions_by_checkout_id(checkout_session_id))
+        deduped_targets: List[str] = []
+        for sid in target_sessions:
+            if sid and sid not in deduped_targets:
+                deduped_targets.append(sid)
+        for sid in deduped_targets:
+            _mark_payment_failed_for_session(sid)
+            logger.warning("--- [Stripe] Pago fallido/expirado para session_id=%s ---", sid)
 
     return {"status": "ok"}
 
