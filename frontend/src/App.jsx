@@ -3,6 +3,7 @@ import './App.css'
 import Login from './Login.jsx'
 
 const AUTH_TOKEN_KEY = 'muppy_token'
+const TEMPORARILY_DISABLE_FRONTEND_LOGIN = true
 
 // Iconos SVG inline para no necesitar dependencias extra
 const SendIcon = () => (
@@ -53,7 +54,7 @@ function getApiHeaders(token) {
 }
 
 function App() {
-  const [authRequired, setAuthRequired] = useState(null)
+  const [authRequired, setAuthRequired] = useState(TEMPORARILY_DISABLE_FRONTEND_LOGIN ? false : null)
   const [token, setToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY))
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
@@ -66,10 +67,22 @@ function App() {
   const inputRef = useRef(null)
   const bootstrappedSessionsRef = useRef(new Set())
 
-  const API_HEADERS = getApiHeaders(token)
+  const restoreInputFocus = () => {
+    // Esperamos al siguiente ciclo de render para asegurar que el textarea ya no esté disabled.
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+  }
+
+  const effectiveToken = TEMPORARILY_DISABLE_FRONTEND_LOGIN ? null : token
+  const API_HEADERS = getApiHeaders(effectiveToken)
 
   // Saber si el backend exige login
   useEffect(() => {
+    if (TEMPORARILY_DISABLE_FRONTEND_LOGIN) {
+      setAuthRequired(false)
+      return
+    }
     let cancelled = false
     fetch(`${API_URL}/auth/required`, { headers: { 'ngrok-skip-browser-warning': 'true' } })
       .then((r) => r.json())
@@ -92,7 +105,11 @@ function App() {
       try {
         const response = await fetch(`${API_URL}/health`, { headers: API_HEADERS })
         if (response.status === 401) {
-          clearSessionAndGoToLogin()
+          if (!TEMPORARILY_DISABLE_FRONTEND_LOGIN) {
+            clearSessionAndGoToLogin()
+          } else {
+            setConnectionStatus('error')
+          }
           return
         }
         if (response.ok) {
@@ -104,12 +121,12 @@ function App() {
         setConnectionStatus('error')
       }
     }
-    if (token != null) {
+    if (TEMPORARILY_DISABLE_FRONTEND_LOGIN || token != null) {
       checkConnection()
       const interval = setInterval(checkConnection, 30000)
       return () => clearInterval(interval)
     }
-  }, [token])
+  }, [token, API_HEADERS])
 
   // Mensaje de bienvenida hardcodeado (sin llamada al LLM)
   useEffect(() => {
@@ -153,6 +170,7 @@ function App() {
   }
 
   const handleUnauthorized = () => {
+    if (TEMPORARILY_DISABLE_FRONTEND_LOGIN) return
     clearSessionAndGoToLogin()
   }
 
@@ -171,11 +189,33 @@ function App() {
   }
 
   // Formatear texto con markdown básico
+  const escapeHtml = (value) => {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  }
+
   const formatMessage = (text) => {
     if (!text) return ''
-    
+
+    let formatted = escapeHtml(text)
+
+    // Links markdown [texto](url)
+    formatted = formatted.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+      const linkLabel = label === url ? 'Abrir enlace' : label
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${linkLabel}</a>`
+    })
+
+    // URLs en texto plano
+    formatted = formatted.replace(/(^|[\s(>])(https?:\/\/[^\s<)]+)/g, (_, prefix, url) => {
+      return `${prefix}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+    })
+
     // Negrita
-    let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     // Cursiva
     formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>')
     // Saltos de línea
@@ -259,7 +299,7 @@ function App() {
       setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
-      inputRef.current?.focus()
+      restoreInputFocus()
     }
   }
 
@@ -400,6 +440,7 @@ function App() {
           />
           <button 
             className="send-btn" 
+            onMouseDown={(e) => e.preventDefault()}
             onClick={sendMessage}
             disabled={!inputValue.trim() || isLoading || connectionStatus === 'error'}
           >

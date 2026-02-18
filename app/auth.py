@@ -24,6 +24,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 días
 
 LOGIN_USER = os.getenv("LOGIN_USER", "").strip()
 LOGIN_PASSWORD_PLAIN = os.getenv("LOGIN_PASSWORD", "").strip()
+LOGIN_DISABLED = os.getenv("LOGIN_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 # Archivo de usuarios registrados (data/users.json). No se sube a git.
 _USERS_FILE_ENV = os.getenv("USERS_FILE", "").strip()
@@ -82,6 +83,8 @@ if _LOGIN_PASSWORD_HASH_ENV:
 
 def is_login_required() -> bool:
     """True si hay al menos un usuario (env o archivo)."""
+    if LOGIN_DISABLED:
+        return False
     if LOGIN_USER and (_LOGIN_PASSWORD_HASH or LOGIN_PASSWORD_PLAIN):
         return True
     return len(_load_users()) > 0

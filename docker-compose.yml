@@ -33,13 +33,36 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: ${VITE_API_URL}
     volumes:
       # Live reload al editar código (opcional)
       - ./frontend:/app
       - /app/node_modules
     depends_on:
       - backend
+
+  stripe-listener:
+    image: stripe/stripe-cli:latest
+    command: >
+      listen
+      --api-key ${STRIPE_SECRET_KEY}
+      --forward-to http://backend:8000/webhooks/stripe
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles: ["tunnels"]
+    command: >
+      http --authtoken=${NGROK_AUTHTOKEN}
+      --url=${NGROK_URL}
+      backend:8000
+    ports:
+      - "4040:4040"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
   ollama_models:

@@ -352,6 +352,8 @@ body {
   border-radius: var(--border-radius-lg);
   line-height: 1.6;
   font-size: 0.95rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .message.bot .message-text {
@@ -380,6 +382,12 @@ body {
 
 .message-text em {
   font-style: italic;
+}
+
+.message-text a {
+  color: #93c5fd;
+  text-decoration: underline;
+  word-break: break-all;
 }
 
 .message-meta {
