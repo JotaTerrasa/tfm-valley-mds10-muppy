@@ -1,11 +1,11 @@
 /* ========================================
    MUPPY AI - Chat Interface Styles
-   Modern, beautiful design for Mapfre Insurance
+   Modern, beautiful design for insurance assistant
 ======================================== */
 
 /* Variables */
 :root {
-  /* Colores principales - Mapfre inspired */
+  /* Colores principales */
   --primary: #dc2626;
   --primary-dark: #b91c1c;
   --primary-light: #ef4444;

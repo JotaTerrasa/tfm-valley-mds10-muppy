@@ -50,7 +50,7 @@ export default function Login({ onSuccess }) {
       <div className="login-card">
         <div className="login-header">
           <h1>Muppy AI</h1>
-          <p>Asistente de Seguros Mapfre</p>
+          <p>Asistente de Seguros</p>
         </div>
         <form onSubmit={handleSubmit} className="login-form">
           <label>

@@ -412,7 +412,7 @@ function App() {
     const welcomeMessage = {
       id: Date.now(),
       type: 'bot',
-      text: '¡Hola! Soy tu asistente de seguros Mapfre. ¿En qué puedo ayudarte hoy?',
+      text: '¡Hola! Soy tu asistente de seguros. ¿En qué puedo ayudarte hoy?',
       timestamp: new Date(),
       agent: 'triage_agent',
       cost: 0,
@@ -638,7 +638,7 @@ function App() {
             </div>
             <div className="logo-text">
               <h1>Muppy AI</h1>
-              <span className="subtitle">Asistente de Seguros Mapfre</span>
+              <span className="subtitle">Asistente de Seguros</span>
             </div>
           </div>
         </div>
