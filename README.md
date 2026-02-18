@@ -262,8 +262,9 @@ Variables adicionales para pago de prueba con Stripe (opcionales, pero obligator
 1. Crea/API key test en Stripe Dashboard (`sk_test_...`) y añádela en `STRIPE_SECRET_KEY`.
 2. Configura las URLs `STRIPE_CHECKOUT_SUCCESS_URL` y `STRIPE_CHECKOUT_CANCEL_URL`.
 3. Arranca listener de Stripe para reenviar eventos al backend:
-   - `stripe listen --forward-to https://<tu-dominio-ngrok>/webhooks/stripe`
-4. Copia el `whsec_...` del listener a `STRIPE_WEBHOOK_SECRET`.
+   - Opción A (recomendado, Docker Compose): `docker compose up -d stripe-listener`
+   - Opción B (Stripe CLI): `stripe listen --forward-to https://<tu-dominio-ngrok>/webhooks/stripe`
+4. Copia el `whsec_...` (webhook signing secret) a `STRIPE_WEBHOOK_SECRET`.
 5. Reinicia backend tras editar `.env`.
 
 **Registrar usuarios:** Puedes dar de alta usuarios de dos formas:
@@ -382,7 +383,9 @@ El frontend está desplegado en **Vercel** en: **[https://tfm-valley-mds10-muppy
 Pasos:
 
 1. **Backend** en local: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` (o `.\scripts\run\start-backend.ps1`)
-2. **Túnel ngrok**: `ngrok http 8000 --domain=charmaine-endoperidial-creepingly.ngrok-free.app` (o sin `--domain` si usas URL temporal)
+2. **Túnel ngrok** (elige una):
+   - Opción A (recomendado, Docker Compose): configura `NGROK_AUTHTOKEN` y `NGROK_URL` en `.env` (raíz) y levanta: `docker compose --profile tunnels up -d ngrok`
+   - Opción B (ngrok CLI): `ngrok http 8000 --url charmaine-endoperidial-creepingly.ngrok-free.app`
 3. En **Vercel** → proyecto del frontend → **Settings** → **Environment Variables**: `VITE_API_URL` = `https://charmaine-endoperidial-creepingly.ngrok-free.app` (con `https://`)
 4. **Redeploy** el frontend para que el build use la nueva URL.
 
@@ -403,6 +406,11 @@ docker compose up -d
 - **Frontend (chat):** http://localhost:5173
 - **Backend (API):** http://localhost:8000 (y `/docs`)
 - **Ollama:** http://localhost:11434 (para RAG/embeddings)
+
+Servicios opcionales:
+
+- **Stripe listener (webhooks):** `docker compose up -d stripe-listener`
+- **ngrok (túnel HTTP):** `docker compose --profile tunnels up -d ngrok` (inspector en http://localhost:4040)
 
 **Primera vez (modelo de embeddings para RAG):** descarga el modelo dentro del contenedor de Ollama:
 

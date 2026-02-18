@@ -142,7 +142,9 @@ Vercel tirará del repo pero construirá y desplegará únicamente lo que hay en
 Si el backend corre en tu máquina y lo expones con **ngrok**:
 
 1. Levanta el backend: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` (desde la raíz del proyecto).
-2. Crea el túnel: `ngrok http 8000 --domain=charmaine-endoperidial-creepingly.ngrok-free.app` (o sin `--domain` si usas URL temporal).
+2. Crea el túnel (elige una):
+   - Opción A (recomendado, Docker Compose): configura `NGROK_AUTHTOKEN` y `NGROK_URL` en `.env` (raíz) y levanta: `docker compose --profile tunnels up -d ngrok`
+   - Opción B (ngrok CLI): `ngrok http 8000 --url charmaine-endoperidial-creepingly.ngrok-free.app`
 3. En Vercel → **Settings** → **Environment Variables**: define `VITE_API_URL` = `https://charmaine-endoperidial-creepingly.ngrok-free.app` (con `https://`; sin esquema las peticiones pueden dar 404).
 4. Redeploy el frontend.
 
@@ -158,6 +160,15 @@ npm run build
 
 El output queda en `dist/`. Puedes servirlo con cualquier hosting estático (Nginx, GitHub Pages, etc.).  
 Si despliegas el frontend, configura **`VITE_API_URL`** en el entorno de build para apuntar al backend desplegado.
+
+## 🧪 Pagos de prueba (Stripe)
+
+Para validar el flujo E2E del pago desde el propio frontend (botón "Pago de prueba"):
+
+- En el **backend** (entorno): `TEST_PAYMENTS_ENABLED=true` (solo en desarrollo).
+- En el **frontend** (Vercel o `.env` local): `VITE_ENABLE_TEST_PAYMENTS=true`.
+
+El botón crea un checkout de Stripe (modo test) de bajo importe y abre el pago en una pestaña nueva. Al completar el pago, esa pestaña se cierra automáticamente (best effort) y la confirmación aparece en la pestaña del chat.
 
 ## 🔒 Seguridad
 

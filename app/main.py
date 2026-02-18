@@ -110,6 +110,10 @@ def _sanitize_payment_availability_text(text: Optional[str]) -> str:
     banned_patterns = [
         r"Por favor, ten en cuenta que la funcionalidad de pagos?.*?no está disponible en este momento\.?",
         r"Por favor, ten en cuenta que la funcionalidad de pagos?.*?no esta disponible en este momento\.?",
+        r"Ten en cuenta que la funcionalidad de pagos?.*?(aún|aun|todavía|todavia)\s+no\s+está\s+habilitad[ao]s?\.?",
+        r"Ten en cuenta que la funcionalidad de pagos?.*?(aún|aun|todavía|todavia)\s+no\s+esta\s+habilitad[ao]s?\.?",
+        r"la funcionalidad de pagos?.*?(aún|aun|todavía|todavia)\s+no\s+está\s+habilitad[ao]s?\.?",
+        r"la funcionalidad de pagos?.*?(aún|aun|todavía|todavia)\s+no\s+esta\s+habilitad[ao]s?\.?",
         r"la pasarela de pago .*? no está disponible\.?",
         r"la pasarela de pago .*? no esta disponible\.?",
         r"pagos? online .*? no está disponible\.?",
@@ -471,6 +475,25 @@ class InvokeResponse(BaseModel):
     request_cost: Optional[float] = None 
 
 
+class StripeCheckoutStatusResponse(BaseModel):
+    checkout_session_id: str
+    payment_status: Optional[str] = None
+    checkout_status: Optional[str] = None
+    paid: bool = False
+    internal_session_id: Optional[str] = None
+
+
+class StripeTestCheckoutRequest(BaseModel):
+    session_id: Optional[str] = None
+    amount_eur: float = 1.0
+    description: str = "Pago de prueba (1 EUR)"
+
+
+class StripeTestCheckoutResponse(BaseModel):
+    checkout_session_id: str
+    checkout_url: str
+
+
 @app.get("/auth/required")
 async def auth_required():
     """Indica si el backend exige login para usar el chat. El frontend lo usa para mostrar o no la pantalla de login."""
@@ -500,6 +523,119 @@ async def register(
         return {"message": f"Usuario '{body.username}' registrado correctamente"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/payments/checkout/{checkout_session_id}", response_model=StripeCheckoutStatusResponse)
+async def stripe_checkout_status(checkout_session_id: str):
+    """
+    Consulta el estado de un Checkout Session de Stripe y devuelve el session_id interno
+    (metadata.session_id) para poder sincronizar el frontend sin esperar al webhook.
+    """
+    if not re.match(r"^cs_(?:test|live)_[A-Za-z0-9]+$", checkout_session_id):
+        raise HTTPException(status_code=404, detail="checkout_session_id inválido")
+
+    stripe_secret = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    if not stripe_secret:
+        raise HTTPException(status_code=503, detail="Pasarela de pago no configurada")
+
+    try:
+        import stripe
+
+        stripe.api_key = stripe_secret
+        session = stripe.checkout.Session.retrieve(checkout_session_id)
+    except Exception as e:
+        logger.warning("--- [Stripe] No se pudo recuperar checkout %s: %s ---", checkout_session_id, e)
+        raise HTTPException(status_code=404, detail="Checkout no encontrado o expirado")
+
+    payment_status = (session or {}).get("payment_status")
+    checkout_status = (session or {}).get("status")
+    metadata = (session or {}).get("metadata") or {}
+    internal_session_id = (metadata.get("session_id") or "").strip() or None
+
+    # Stripe suele marcar payment_status="paid" cuando el pago ya está confirmado.
+    paid = str(payment_status).lower() in {"paid", "no_payment_required"} and str(checkout_status).lower() in {"complete", "completed", "open", "paid"}
+    if paid and internal_session_id:
+        # Best-effort: refleja el pago en memoria aunque el webhook aún no haya llegado.
+        _mark_payment_success_for_session(
+            session_id=internal_session_id,
+            checkout_session_id=checkout_session_id,
+            stripe_payment_status=payment_status,
+        )
+
+    return StripeCheckoutStatusResponse(
+        checkout_session_id=checkout_session_id,
+        payment_status=payment_status,
+        checkout_status=checkout_status,
+        paid=paid,
+        internal_session_id=internal_session_id,
+    )
+
+
+@app.post("/payments/test-checkout", response_model=StripeTestCheckoutResponse)
+async def stripe_test_checkout(body: StripeTestCheckoutRequest):
+    """
+    Crea un Checkout de Stripe en modo test para validación E2E del frontend.
+    Protegido por flag de entorno para evitar exponerlo accidentalmente.
+    """
+    enabled = (os.getenv("TEST_PAYMENTS_ENABLED") or "").strip().lower() in {"1", "true", "yes", "on"}
+    if not enabled:
+        raise HTTPException(status_code=403, detail="TEST_PAYMENTS_ENABLED=false")
+
+    stripe_secret = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    if not stripe_secret:
+        raise HTTPException(status_code=503, detail="STRIPE_SECRET_KEY no configurada")
+    if not stripe_secret.startswith("sk_test_"):
+        raise HTTPException(status_code=403, detail="Solo permitido con STRIPE_SECRET_KEY de test (sk_test_)")
+
+    try:
+        amount = float(body.amount_eur or 1.0)
+    except (TypeError, ValueError):
+        amount = 1.0
+    # Mantenerlo acotado para evitar abuso accidental.
+    if amount <= 0 or amount > 5:
+        raise HTTPException(status_code=400, detail="amount_eur debe ser > 0 y <= 5")
+
+    created_session_id = (body.session_id or "").strip() or f"web_test_{uuid.uuid4().hex[:10]}"
+    description = (body.description or "Pago de prueba").strip()
+
+    success_url = (
+        os.getenv("STRIPE_CHECKOUT_SUCCESS_URL")
+        or "http://localhost:5173/payment/success?session_id={CHECKOUT_SESSION_ID}"
+    ).strip()
+    cancel_url = (
+        os.getenv("STRIPE_CHECKOUT_CANCEL_URL")
+        or "http://localhost:5173/payment/cancel"
+    ).strip()
+    currency = (os.getenv("STRIPE_CURRENCY") or "eur").strip().lower()
+
+    try:
+        import stripe
+
+        stripe.api_key = stripe_secret
+        checkout = stripe.checkout.Session.create(
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "session_id": str(created_session_id or ""),
+                "payment_context": "frontend_test_checkout",
+            },
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": currency,
+                        "unit_amount": int(round(float(amount) * 100)),
+                        "product_data": {"name": (description or "Pago de prueba")[:120]},
+                    },
+                    "quantity": 1,
+                }
+            ],
+        )
+    except Exception as e:
+        logger.warning("--- [Stripe] No se pudo crear test checkout: %s ---", e)
+        raise HTTPException(status_code=500, detail="No se pudo crear el Checkout de prueba")
+
+    return StripeTestCheckoutResponse(checkout_session_id=str(checkout.id), checkout_url=str(checkout.url))
 
 
 async def _process_invoke_request(

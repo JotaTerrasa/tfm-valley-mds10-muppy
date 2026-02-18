@@ -4,6 +4,11 @@ import Login from './Login.jsx'
 
 const AUTH_TOKEN_KEY = 'muppy_token'
 const TEMPORARILY_DISABLE_FRONTEND_LOGIN = true
+const STRIPE_PAYMENT_EVENT_KEY = 'muppy_stripe_payment_event'
+const STRIPE_POSTMESSAGE_TYPE = 'muppy:stripe-payment-success'
+const CHAT_SNAPSHOT_KEY = 'muppy_chat_snapshot'
+const SESSION_ID_KEY = 'muppy_session_id'
+const ENABLE_TEST_PAYMENTS = import.meta.env.VITE_ENABLE_TEST_PAYMENTS === 'true'
 
 // Iconos SVG inline para no necesitar dependencias extra
 const SendIcon = () => (
@@ -59,13 +64,36 @@ function App() {
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [sessionId, setSessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+  const [sessionId, setSessionId] = useState(() => {
+    try {
+      const existing = localStorage.getItem(SESSION_ID_KEY)
+      if (existing) return existing
+    } catch (e) {
+      // ignore
+    }
+    const created = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    try {
+      localStorage.setItem(SESSION_ID_KEY, created)
+    } catch (e) {
+      // ignore
+    }
+    return created
+  })
   const [activeAgent, setActiveAgent] = useState('triage_agent')
   const [connectionStatus, setConnectionStatus] = useState('checking')
   
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const bootstrappedSessionsRef = useRef(new Set())
+  const processedCheckoutSessionsRef = useRef(new Set())
+  const [paymentReturnNotice, setPaymentReturnNotice] = useState('')
+  const [paymentReturnError, setPaymentReturnError] = useState('')
+
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname)
+  const pathname = currentPath
+  const isPaymentSuccessRoute = pathname.startsWith('/payment/success')
+  const isPaymentCancelRoute = pathname.startsWith('/payment/cancel')
+  const isPaymentReturnRoute = isPaymentSuccessRoute || isPaymentCancelRoute
 
   const restoreInputFocus = () => {
     // Esperamos al siguiente ciclo de render para asegurar que el textarea ya no esté disabled.
@@ -76,6 +104,137 @@ function App() {
 
   const effectiveToken = TEMPORARILY_DISABLE_FRONTEND_LOGIN ? null : token
   const API_HEADERS = getApiHeaders(effectiveToken)
+
+  useEffect(() => {
+    const onPopState = () => setCurrentPath(window.location.pathname)
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SESSION_ID_KEY, sessionId)
+    } catch (e) {
+      // ignore
+    }
+  }, [sessionId])
+
+  const appendBotMessage = (text, agentOverride = activeAgent) => {
+    if (!text) return
+    const botMessage = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      type: 'bot',
+      text,
+      timestamp: new Date(),
+      agent: agentOverride,
+    }
+    setMessages((prev) => [...prev, botMessage])
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  const saveChatSnapshot = () => {
+    try {
+      const serializableMessages = (messages || []).map((m) => ({
+        ...m,
+        timestamp: m?.timestamp instanceof Date ? m.timestamp.toISOString() : m?.timestamp,
+      }))
+      localStorage.setItem(
+        CHAT_SNAPSHOT_KEY,
+        JSON.stringify({
+          ts: Date.now(),
+          sessionId,
+          activeAgent,
+          messages: serializableMessages,
+        }),
+      )
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const restoreChatSnapshotIfAny = () => {
+    try {
+      const raw = localStorage.getItem(CHAT_SNAPSHOT_KEY)
+      if (!raw) return false
+      const snapshot = JSON.parse(raw)
+      if (!snapshot?.sessionId) return false
+
+      const restoredMessages = Array.isArray(snapshot.messages)
+        ? snapshot.messages.map((m) => ({
+          ...m,
+          timestamp: m?.timestamp ? new Date(m.timestamp) : new Date(),
+        }))
+        : []
+
+      setSessionId(snapshot.sessionId)
+      if (snapshot.activeAgent) setActiveAgent(snapshot.activeAgent)
+      if (restoredMessages.length) setMessages(restoredMessages)
+
+      localStorage.removeItem(CHAT_SNAPSHOT_KEY)
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+
+  const autoConfirmCheckoutPayment = async (checkoutSessionId) => {
+    if (!checkoutSessionId || processedCheckoutSessionsRef.current.has(checkoutSessionId)) return
+    processedCheckoutSessionsRef.current.add(checkoutSessionId)
+
+    try {
+      let statusData = null
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const statusResponse = await fetch(`${API_URL}/payments/checkout/${encodeURIComponent(checkoutSessionId)}`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+        })
+        if (statusResponse.ok) {
+          statusData = await statusResponse.json()
+          if (statusData?.paid === true) break
+        }
+        await sleep(1500)
+      }
+
+      if (!statusData?.paid) {
+        appendBotMessage('Estamos validando tu pago. Te confirmaremos automáticamente en unos segundos.')
+        return
+      }
+
+      const targetSessionId = statusData.internal_session_id || sessionId
+      if (targetSessionId && targetSessionId !== sessionId) {
+        setSessionId(targetSessionId)
+      }
+
+      const response = await fetch(`${API_URL}/invoke`, {
+        method: 'POST',
+        headers: API_HEADERS,
+        body: JSON.stringify({
+          input: 'Ya he pagado',
+          session_id: targetSessionId,
+          metadata: {
+            source: 'web_frontend',
+            payment: {
+              auto_confirmation: true,
+              checkout_session_id: checkoutSessionId,
+            },
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        appendBotMessage('Pago detectado. Estamos finalizando la confirmación en el chat.')
+        return
+      }
+
+      const data = await response.json()
+      if (data.structured_data?.active_agent_key) {
+        setActiveAgent(data.structured_data.active_agent_key)
+      }
+      appendBotMessage(data.response || 'Pago confirmado correctamente.')
+    } catch (error) {
+      appendBotMessage('Pago detectado. Si no ves la confirmación enseguida, escribe "ya he pagado".')
+    }
+  }
 
   // Saber si el backend exige login
   useEffect(() => {
@@ -91,6 +250,75 @@ function App() {
     return () => { cancelled = true }
   }, [])
 
+  // Escuchar confirmación de pago desde pestaña de retorno de Stripe.
+  useEffect(() => {
+    if (isPaymentReturnRoute) return
+
+    const handleStorage = (event) => {
+      if (event.key !== STRIPE_PAYMENT_EVENT_KEY || !event.newValue) return
+      try {
+        const payload = JSON.parse(event.newValue)
+        const checkoutSessionId = payload?.checkout_session_id
+        if (checkoutSessionId) {
+          autoConfirmCheckoutPayment(checkoutSessionId)
+        }
+      } catch (error) {
+        // noop
+      }
+    }
+
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== STRIPE_POSTMESSAGE_TYPE) return
+      const checkoutSessionId = event.data?.checkout_session_id
+      if (checkoutSessionId) {
+        autoConfirmCheckoutPayment(checkoutSessionId)
+      }
+    }
+
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener('message', handleMessage)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('message', handleMessage)
+    }
+  }, [isPaymentReturnRoute, sessionId, API_HEADERS])
+
+  // Vista de retorno de Stripe (success/cancel): notifica al chat y cierra la pestaña nueva.
+  useEffect(() => {
+    if (!isPaymentReturnRoute) return
+
+    const params = new URLSearchParams(window.location.search)
+    const checkoutSessionId = params.get('session_id') || ''
+
+    if (isPaymentSuccessRoute) {
+      if (!checkoutSessionId) {
+        setPaymentReturnError('No se recibió el identificador del pago. Puedes volver al chat.')
+        return
+      }
+
+      const payload = JSON.stringify({
+        checkout_session_id: checkoutSessionId,
+        ts: Date.now(),
+      })
+      localStorage.setItem(STRIPE_PAYMENT_EVENT_KEY, payload)
+
+      setPaymentReturnNotice('Pago completado. Volviendo al chat...')
+      // El chat principal escuchará el evento por localStorage y confirmará el pago allí.
+      window.setTimeout(() => {
+        window.close()
+      }, 400)
+      return
+    }
+
+    if (isPaymentCancelRoute) {
+      setPaymentReturnNotice('Pago cancelado. Puedes volver al chat cuando quieras.')
+      window.setTimeout(() => {
+        window.close()
+      }, 500)
+    }
+  }, [isPaymentReturnRoute, isPaymentSuccessRoute, isPaymentCancelRoute])
+
   // Auto-scroll al último mensaje (siempre mismo número de hooks)
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -98,6 +326,50 @@ function App() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  const handleChatClickCapture = (e) => {
+    const anchor = e.target?.closest?.('a')
+    if (!anchor) return
+    const href = anchor.getAttribute('href') || ''
+    if (href.includes('/pay/cs_') || href.includes('checkout.stripe.com')) {
+      // Abrir SIEMPRE en pestaña nueva via window.open para que luego podamos cerrarla
+      // automáticamente desde /payment/success.
+      e.preventDefault()
+      try {
+        window.open(href, '_blank', 'noopener,noreferrer')
+      } catch (err) {
+        // Fallback: si el navegador bloquea el popup, dejamos que el click normal ocurra.
+        window.location.href = href
+      }
+    }
+  }
+
+  const startTestPayment = async () => {
+    try {
+      const response = await fetch(`${API_URL}/payments/test-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          amount_eur: 1.0,
+          description: 'Pago de prueba (1 EUR)',
+        }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        const detail = body?.detail || response.statusText
+        appendBotMessage(`❌ No se pudo crear el pago de prueba: ${detail}`)
+        return
+      }
+      const data = await response.json()
+      const checkoutSessionId = data.checkout_session_id
+      const payUrl = `${API_URL}/pay/${checkoutSessionId}`
+      appendBotMessage(`Pago de prueba creado. [Abrir enlace](${payUrl})`)
+      window.open(payUrl, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      appendBotMessage('❌ No se pudo crear el pago de prueba.')
+    }
+  }
 
   // Verificar conexión con el backend
   useEffect(() => {
@@ -131,6 +403,7 @@ function App() {
   // Mensaje de bienvenida hardcodeado (sin llamada al LLM)
   useEffect(() => {
     if (connectionStatus !== 'connected') return
+    if (messages.length > 0) return
     if (bootstrappedSessionsRef.current.has(sessionId)) return
 
     bootstrappedSessionsRef.current.add(sessionId)
@@ -174,6 +447,18 @@ function App() {
     clearSessionAndGoToLogin()
   }
 
+  if (isPaymentReturnRoute) {
+    return (
+      <div className="app-container login-page">
+        <div className="login-card">
+          <h2>{isPaymentSuccessRoute ? 'Pago recibido' : 'Pago cancelado'}</h2>
+          <p>{paymentReturnNotice || 'Procesando estado del pago...'}</p>
+          {paymentReturnError && <p className="login-error">{paymentReturnError}</p>}
+        </div>
+      </div>
+    )
+  }
+
   if (authRequired === true && !token) {
     return <Login key="login" onSuccess={handleLoginSuccess} />
   }
@@ -198,6 +483,16 @@ function App() {
       .replace(/'/g, '&#39;')
   }
 
+  const rewriteStripeUrlIfNeeded = (url) => {
+    if (!url) return url
+    // Preferir el redirect backend /pay/<cs_...> para evitar URLs enormes y ser más robustos.
+    // (Sigue terminando en Stripe, pero es un enlace más corto y estable.)
+    const match = String(url).match(/cs_(?:test|live)_[A-Za-z0-9]+/)
+    if (!match) return url
+    const checkoutSessionId = match[0]
+    return `${API_URL}/pay/${checkoutSessionId}`
+  }
+
   const formatMessage = (text) => {
     if (!text) return ''
 
@@ -206,12 +501,14 @@ function App() {
     // Links markdown [texto](url)
     formatted = formatted.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
       const linkLabel = label === url ? 'Abrir enlace' : label
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${linkLabel}</a>`
+      const href = rewriteStripeUrlIfNeeded(url)
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${linkLabel}</a>`
     })
 
     // URLs en texto plano
     formatted = formatted.replace(/(^|[\s(>])(https?:\/\/[^\s<)]+)/g, (_, prefix, url) => {
-      return `${prefix}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+      const href = rewriteStripeUrlIfNeeded(url)
+      return `${prefix}<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`
     })
 
     // Negrita
@@ -362,6 +659,11 @@ function App() {
             <NewChatIcon />
             <span>Nueva conversación</span>
           </button>
+          {ENABLE_TEST_PAYMENTS && (
+            <button className="new-chat-btn" onClick={startTestPayment} title="Pago de prueba">
+              <span>Pago de prueba</span>
+            </button>
+          )}
           {authRequired && token && (
             <button type="button" className="logout-btn" onClick={handleLogout} title="Cerrar sesión">
               Cerrar sesión
@@ -371,7 +673,7 @@ function App() {
       </header>
 
       {/* Messages Container */}
-      <main className="messages-container">
+      <main className="messages-container" onClickCapture={handleChatClickCapture}>
         <div className="messages-wrapper">
           {messages.map((message) => (
             <div 

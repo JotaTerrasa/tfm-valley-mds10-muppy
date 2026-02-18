@@ -13,7 +13,9 @@ def _normalize_dni_input(value: str) -> str:
     if not value or not isinstance(value, str):
         return ""
     s = value.strip().upper()
-    s = re.sub(r"[\s.\-]", "", s)
+    # El LLM/cliente puede introducir el identificador con backticks, comillas o separadores.
+    # Nos quedamos solo con caracteres alfanuméricos para validar el patrón/algoritmo.
+    s = re.sub(r"[^A-Z0-9]", "", s)
     return s
 
 
