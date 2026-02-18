@@ -699,9 +699,9 @@ function App() {
                   className="message-text"
                   dangerouslySetInnerHTML={{ __html: formatMessage(message.text) }}
                 />
-                {message.cost && (
+                {(Number.isFinite(Number(message.cost)) && Number(message.cost) > 0) && (
                   <div className="message-meta">
-                    <span className="cost-badge">💰 ${message.cost.toFixed(4)}</span>
+                    <span className="cost-badge">💰 ${Number(message.cost).toFixed(4)}</span>
                   </div>
                 )}
               </div>
